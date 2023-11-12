@@ -14,8 +14,6 @@ FIRST_PERIOD_OFF_DELAY = timedelta(hours=2).total_seconds()
 SECOND_PERIOD_OFF_DELAY = timedelta(hours=1).total_seconds()
 CHART_FILE_NAME = "electricity_prices_chart.png"
 
-SMTP_SERVER = smtplib.SMTP('localhost')
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
@@ -44,7 +42,11 @@ def send_email(subject, content, from_email, to_email, attach_chart=False):
         chart.add_header("Content-ID", "<chart>")
         mime_message.attach(chart)
 
-    SMTP_SERVER.sendmail(from_email, to_email, mime_message.as_string())
+    try:
+        with smtplib.SMTP('localhost') as smtp_server:
+            smtp_server.sendmail(from_email, to_email, mime_message.as_string())
+    except Exception as err:
+        logging.error(f"Failed to send email: {err}")
 
 
 if __name__ == '__main__':
@@ -74,7 +76,8 @@ if __name__ == '__main__':
             current_date_on_file = target_date.strftime("%Y;%m;%d")
             current_hour = target_date.hour
 
-            url = f"https://www.omie.es/es/file-download?parents%5B0%5D=marginalpdbc&filename=marginalpdbc_{current_date}.1"
+            url = (f"https://www.omie.es/es/file-download?parents%5B0%5D=marginalpdbc"
+                   f"&filename=marginalpdbc_{current_date}.1")
             response = requests.get(url)
             if response.status_code == 200:
                 try:
@@ -111,7 +114,6 @@ if __name__ == '__main__':
                         f"⬇️💶 Cheapest hour within second period: {target_hour_second_period[0]}h - "
                         f"{target_hour_second_period[1]} €/MWh")
 
-
                     email_message += cheapest_hour_message_first_period
                     email_message += "<br>"
                     email_message += cheapest_hour_message_second_period
@@ -138,9 +140,9 @@ if __name__ == '__main__':
             is_first_target = target_hour_first_period[0] == datetime.now().hour
             is_second_target = target_hour_second_period[0] == datetime.now().hour
             if is_first_target or is_second_target:
+                delay = FIRST_PERIOD_OFF_DELAY if is_first_target else SECOND_PERIOD_OFF_DELAY
                 try:
                     if not plug.get_status():
-                        delay = FIRST_PERIOD_OFF_DELAY if is_first_target else SECOND_PERIOD_OFF_DELAY
                         plug.turnOn()
                         plug.turnOffWithDelay(delay)
                         logging.info(f"Plug enabled at {datetime.now()} for {timedelta(seconds=delay)}")
