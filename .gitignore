@@ -2,3 +2,4 @@
 venv/
 config.properties
 *.iml
+*.png
