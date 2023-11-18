@@ -1,8 +1,12 @@
 import configparser
+import os
 import smtplib
 import time
+
+import matplotlib.axes
 import requests
 import logging
+import re
 import matplotlib.pyplot as plt
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
@@ -10,17 +14,50 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from PyP100 import PyP100, auth_protocol
 
-FIRST_PERIOD_OFF_DELAY = timedelta(hours=2).total_seconds()
-SECOND_PERIOD_OFF_DELAY = timedelta(hours=1).total_seconds()
-CHART_FILE_NAME = "electricity_prices_chart.png"
+CHART_FILE_NAME = "prices_chart.png"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
+class Plug:
+    def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str):
+        self.address = plug_config.get('address')
+        self.name = plug_config.get('name')
+        self.first_period_start_hour = plug_config.getint('first_period_start_hour')
+        self.first_period_end_hour = plug_config.getint('first_period_end_hour')
+        self.first_period_runtime_human = plug_config.get('first_period_runtime_human')
+        self.first_period_runtime_seconds = human_time_to_seconds(self.first_period_runtime_human)
+        self.second_period_start_hour = plug_config.getint('second_period_start_hour')
+        self.second_period_end_hour = plug_config.getint('second_period_end_hour')
+        self.second_period_runtime_human = plug_config.get('second_period_runtime_human')
+        self.second_period_runtime_seconds = human_time_to_seconds(self.second_period_runtime_human)
+        self.tapo = PyP100.Switchable(self.address, email, password, "old")
+
+        self.first_period_target = None
+        self.second_period_target = None
+
+    def calculate_target_hours(self, prices: list[tuple[int, float]]):
+        self.first_period_target = min([(h, p) for h, p in prices
+                                        if self.first_period_start_hour <= h <= self.first_period_end_hour],
+                                       key=lambda x: x[1])
+        self.second_period_target = min([(h, p) for h, p in prices
+                                         if self.second_period_start_hour <= h <= self.second_period_end_hour],
+                                        key=lambda x: x[1])
+
+    def runtime_seconds(self):
+        current_hour = datetime.now().hour
+        if self.first_period_target[0] == current_hour:
+            return self.first_period_runtime_seconds
+        elif self.second_period_target[0] == current_hour:
+            return self.second_period_runtime_seconds
+        else:
+            return 0
+
+
 def send_email(subject, content, from_email, to_email, attach_chart=False):
     mime_message = MIMEMultipart("related")
-    mime_message["From"] = f"Energy manager <{from_email}>"
-    mime_message["To"] = f"Alejandro Castilla Quesada <{to_email}>"
+    mime_message["From"] = from_email
+    mime_message["To"] = to_email
     mime_message["Subject"] = subject
 
     html_body = f"""
@@ -49,32 +86,44 @@ def send_email(subject, content, from_email, to_email, attach_chart=False):
         logging.error(f"Failed to send email: {err}")
 
 
+def human_time_to_seconds(human_time):
+    match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
+    h = match.group(1)
+    hours = int(h.replace('h', '') if h else 0)
+    m = match.group(2)
+    minutes = int(m.replace('m', '') if m else 0)
+    s = match.group(3)
+    seconds = int(s.replace('s', '') if s else 0)
+
+    # Convert the hours, minutes, and seconds to seconds.
+    total_seconds = hours * 3600 + minutes * 60 + seconds
+
+    return total_seconds
+
+
 if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.properties')
-    manager_from_email = config.get('email', 'manager.from.email')
-    manager_to_email = config.get('email', 'manager.to.email')
-    tapo_address = config.get('credentials', 'tapo.address')
-    tapo_email = config.get('credentials', 'tapo.email')
-    tapo_password = config.get('credentials', 'tapo.password')
 
-    plug = PyP100.Switchable(tapo_address, tapo_email, tapo_password, "old")
+    manager_from_email = config.get('email', 'from_email')
+    manager_to_email = config.get('email', 'to_email')
+    tapo_email = config.get('credentials', 'tapo_email')
+    tapo_password = config.get('credentials', 'tapo_password')
+
+    plugs = []
+    for section in config.sections():
+        if section.startswith("plug"):
+            plugs.append(Plug(config[section], tapo_email, tapo_password))
 
     target_date = None
-    target_hour_first_period = None
-    target_hour_second_period = None
 
     while True:
-        if (target_date is None or target_date.date() != datetime.now().date()) or target_hour_first_period is None:
+        if target_date is None or target_date.date() != datetime.now().date():
             target_date = datetime.now()
-            target_hour_first_period = None
-            target_hour_second_period = None
-
-            logging.info(f"Loading prices data for {target_date.date()}")
-
             current_date = target_date.strftime("%Y%m%d")
             current_date_on_file = target_date.strftime("%Y;%m;%d")
-            current_hour = target_date.hour
+
+            logging.info(f"Loading prices data for {target_date.date()}")
 
             url = (f"https://www.omie.es/es/file-download?parents%5B0%5D=marginalpdbc"
                    f"&filename=marginalpdbc_{current_date}.1")
@@ -92,76 +141,87 @@ if __name__ == '__main__':
                             price = float(parts[5])
                             hourly_prices.append((hour, price))
 
-                    target_hour_first_period = min(
-                        [(hour, price) for hour, price in hourly_prices if 3 <= hour <= 10],
-                        key=lambda x: x[1])
-                    target_hour_second_period = min(
-                        [(hour, price) for hour, price in hourly_prices if 14 <= hour <= 23],
-                        key=lambda x: x[1])
-
                     email_message = f"<p>💶🔋 Electricity prices for {datetime.now().date()}:</p>"
 
                     for hour, price in hourly_prices:
                         email_message += f"⏱️💶 {hour}h: {price} €/MWh"
                         email_message += "<br>"
 
-                    email_message += "<p>"
+                    for plug in plugs:
+                        plug.calculate_target_hours(hourly_prices)
+                        email_message += "<p>"
+                        email_message += f"🔌 {plug.name}:"
+                        email_message += "<br>"
+                        email_message += f"⬇️💶 Cheapest hour within first period " \
+                                         f"({plug.first_period_start_hour}h - {plug.first_period_end_hour}h): " \
+                                         f"{plug.first_period_target[0]}h - {plug.first_period_target[1]} €/MWh"
+                        email_message += "<br>"
+                        email_message += (f"⏱️ Plug will run for {plug.first_period_runtime_human} "
+                                          f"({plug.first_period_runtime_seconds} seconds) in this period.")
+                        email_message += "<br>"
+                        email_message += f"⬇️💶 Cheapest hour within second period " \
+                                         f"({plug.second_period_start_hour}h - {plug.second_period_end_hour}h): " \
+                                         f"{plug.second_period_target[0]}h - {plug.second_period_target[1]} €/MWh"
+                        email_message += "<br>"
+                        email_message += (f"⏱️ Plug will run for {plug.second_period_runtime_human} "
+                                          f"({plug.second_period_runtime_seconds} seconds) in this period.")
+                        email_message += "</p>"
 
-                    cheapest_hour_message_first_period = (
-                        f"⬇️💶 Cheapest hour within first period: {target_hour_first_period[0]}h - "
-                        f"{target_hour_first_period[1]} €/MWh")
-                    cheapest_hour_message_second_period = (
-                        f"⬇️💶 Cheapest hour within second period: {target_hour_second_period[0]}h - "
-                        f"{target_hour_second_period[1]} €/MWh")
+                    # Delete previous chart
+                    try:
+                        os.remove(CHART_FILE_NAME)
+                    except OSError:
+                        pass
 
-                    email_message += cheapest_hour_message_first_period
-                    email_message += "<br>"
-                    email_message += cheapest_hour_message_second_period
+                    ax: matplotlib.axes.Axes
+                    fig: matplotlib.pyplot.Figure
+                    (fig, ax) = plt.subplots()
+                    ax.bar([hour for hour, price in hourly_prices], [price for hour, price in hourly_prices])
+                    ax.set_title(f"Electricity prices for {target_date.date()}")
+                    ax.set_xlabel("Hour")
+                    ax.set_ylabel("Price (€/MWh)")
+                    fig.savefig(CHART_FILE_NAME)
 
-                    email_message += "</p>"
-
-                    plt.bar([hour for hour, price in hourly_prices], [price for hour, price in hourly_prices])
-                    plt.xlabel("Hour")
-                    plt.ylabel("Price (€/MWh)")
-                    plt.title("Electricity prices")
-                    plt.savefig(CHART_FILE_NAME)
-
-                    send_email(f'Electricity prices for {target_date.date()}', email_message,
+                    send_email(f'💶🔋 Electricity prices for {target_date.date()}', email_message,
                                manager_from_email, manager_to_email, True)
 
                     logging.info(f"Successfully downloaded prices data for {target_date.date()}. "
                                  f"Email with all data has been sent.")
                 except Exception as e:
-                    logging.error(f"Failed to parse prices data: {e}")
+                    logging.error(f"Failed to parse prices data: {e}", e)
             else:
                 logging.error(f"Failed to download prices data. Response code: {response.status_code}")
         else:
             # Check if we are in some of the cheapest hours and enable the plug
-            is_first_target = target_hour_first_period[0] == datetime.now().hour
-            is_second_target = target_hour_second_period[0] == datetime.now().hour
-            if is_first_target or is_second_target:
-                delay = FIRST_PERIOD_OFF_DELAY if is_first_target else SECOND_PERIOD_OFF_DELAY
-                try:
-                    if not plug.get_status():
-                        plug.turnOn()
-                        plug.turnOffWithDelay(delay)
-                        logging.info(f"Plug enabled at {datetime.now()} for {timedelta(seconds=delay)}")
-                        send_email("Plug enabled",
-                                   f"🔌 Plug has been enabled for {timedelta(seconds=delay)}.",
-                                   manager_from_email, manager_to_email)
-                except Exception as e:
-                    logging.error(f"Failed to enable plug: {e}")
-                    # Try to re-initialize the protocol
-                    if isinstance(plug.protocol, auth_protocol.OldProtocol):
-                        # WARNING: session must be re-initialized because the plug does not seem to allow more than
-                        # one handshake in the same session.
-                        # See https://github.com/fishbigger/TapoP100/issues/62#issuecomment-1107876214
-                        try:
-                            plug.protocol.session = requests.Session()
-                            plug.protocol.Initialize()
-                        except Exception as e:
-                            logging.error(f"Failed to re-initialize plug protocol: {e}")
+            for plug in plugs:
+                runtime = plug.runtime_seconds()
+                if runtime > 0:  # We are on target
+                    try:
+                        if not plug.tapo.get_status():
+                            plug.tapo.turnOn()
+                            plug.tapo.turnOffWithDelay(runtime)
+                            logging.info(
+                                f"Plug {plug.name} enabled at {datetime.now()} for {timedelta(seconds=runtime)}")
+                            send_email(f"🔌 Plug {plug.name} enabled",
+                                       f"🔌 Plug {plug.name} has been enabled for {timedelta(seconds=runtime)}.",
+                                       manager_from_email, manager_to_email)
+                    except Exception as e:
+                        logging.error(f"Failed to enable plug: {e}")
+                        # Try to re-initialize the protocol
+                        if isinstance(plug.tapo.protocol, auth_protocol.OldProtocol):
+                            # WARNING: session must be re-initialized because the plug does not seem to allow more than
+                            # one handshake in the same session.
+                            # See https://github.com/fishbigger/TapoP100/issues/62#issuecomment-1107876214
+                            try:
+                                plug.tapo.protocol.session = requests.Session()
+                                plug.tapo.protocol.Initialize()
+                            except Exception as e:
+                                logging.error(f"Failed to re-initialize plug protocol: {e}")
 
-                        logging.info("Successfully re-initialized plug protocol")
+                            logging.info("Successfully re-initialized plug protocol")
 
-        time.sleep(30)
+        try:
+            time.sleep(30)
+        except KeyboardInterrupt:
+            logging.info("Exiting...")
+            break
