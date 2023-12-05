@@ -21,8 +21,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class Plug:
     def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str):
-        self.address = plug_config.get('address')
         self.name = plug_config.get('name')
+        self.address = plug_config.get('address')
         self.first_period_start_hour = plug_config.getint('first_period_start_hour')
         self.first_period_end_hour = plug_config.getint('first_period_end_hour')
         self.first_period_runtime_human = plug_config.get('first_period_runtime_human')
@@ -31,7 +31,7 @@ class Plug:
         self.second_period_end_hour = plug_config.getint('second_period_end_hour')
         self.second_period_runtime_human = plug_config.get('second_period_runtime_human')
         self.second_period_runtime_seconds = human_time_to_seconds(self.second_period_runtime_human)
-        self.tapo = PyP100.Switchable(self.address, email, password, "old")
+        self.tapo = PyP100.Switchable(self.address, email, password)
 
         self.first_period_target = None
         self.second_period_target = None
@@ -113,7 +113,8 @@ if __name__ == '__main__':
     plugs = []
     for section in config.sections():
         if section.startswith("plug"):
-            plugs.append(Plug(config[section], tapo_email, tapo_password))
+            if config[section].getboolean('enabled'):
+                plugs.append(Plug(config[section], tapo_email, tapo_password))
 
     target_date = None
 
@@ -138,13 +139,13 @@ if __name__ == '__main__':
                             # IMPORTANT: OMIE provides every price at the end of the hour, so we need to subtract 1 hour
                             # This can be checked in the charts of esios.ree.es
                             hour = int(parts[3]) - 1
-                            price = float(parts[5])
+                            price = round(float(parts[5]) / 1000, 3)
                             hourly_prices.append((hour, price))
 
                     email_message = f"<p>💶🔋 Electricity prices for {datetime.now().date()}:</p>"
 
                     for hour, price in hourly_prices:
-                        email_message += f"⏱️💶 {hour}h: {price} €/MWh"
+                        email_message += f"⏱️💶 {hour}h: {price} €/kWh"
                         email_message += "<br>"
 
                     for plug in plugs:
@@ -154,14 +155,14 @@ if __name__ == '__main__':
                         email_message += "<br>"
                         email_message += f"⬇️💶 Cheapest hour within first period " \
                                          f"({plug.first_period_start_hour}h - {plug.first_period_end_hour}h): " \
-                                         f"{plug.first_period_target[0]}h - {plug.first_period_target[1]} €/MWh"
+                                         f"{plug.first_period_target[0]}h - {plug.first_period_target[1]} €/kWh"
                         email_message += "<br>"
                         email_message += (f"⏱️ Plug will run for {plug.first_period_runtime_human} "
                                           f"({plug.first_period_runtime_seconds} seconds) in this period.")
                         email_message += "<br>"
                         email_message += f"⬇️💶 Cheapest hour within second period " \
                                          f"({plug.second_period_start_hour}h - {plug.second_period_end_hour}h): " \
-                                         f"{plug.second_period_target[0]}h - {plug.second_period_target[1]} €/MWh"
+                                         f"{plug.second_period_target[0]}h - {plug.second_period_target[1]} €/kWh"
                         email_message += "<br>"
                         email_message += (f"⏱️ Plug will run for {plug.second_period_runtime_human} "
                                           f"({plug.second_period_runtime_seconds} seconds) in this period.")
@@ -179,7 +180,7 @@ if __name__ == '__main__':
                     ax.bar([hour for hour, price in hourly_prices], [price for hour, price in hourly_prices])
                     ax.set_title(f"Electricity prices for {target_date.date()}")
                     ax.set_xlabel("Hour")
-                    ax.set_ylabel("Price (€/MWh)")
+                    ax.set_ylabel("Price (€/kWh)")
                     fig.savefig(CHART_FILE_NAME)
 
                     send_email(f'💶🔋 Electricity prices for {target_date.date()}', email_message,
@@ -208,7 +209,7 @@ if __name__ == '__main__':
                     except Exception as e:
                         logging.error(f"Failed to enable plug: {e}")
                         # Try to re-initialize the protocol
-                        if isinstance(plug.tapo.protocol, auth_protocol.OldProtocol):
+                        if isinstance(plug.tapo.protocol, auth_protocol.AuthProtocol):
                             # WARNING: session must be re-initialized because the plug does not seem to allow more than
                             # one handshake in the same session.
                             # See https://github.com/fishbigger/TapoP100/issues/62#issuecomment-1107876214
