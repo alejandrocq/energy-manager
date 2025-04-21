@@ -2,7 +2,6 @@ import configparser
 import os
 import smtplib
 import time
-
 import matplotlib.axes
 import requests
 import logging
@@ -37,18 +36,20 @@ class Plug:
         self.second_period_target = None
 
     def calculate_target_hours(self, prices: list[tuple[int, float]]):
-        self.first_period_target = min([(h, p) for h, p in prices
-                                        if self.first_period_start_hour <= h <= self.first_period_end_hour],
-                                       key=lambda x: x[1])
-        self.second_period_target = min([(h, p) for h, p in prices
-                                         if self.second_period_start_hour <= h <= self.second_period_end_hour],
-                                        key=lambda x: x[1])
+        self.first_period_target = min(
+            [(h, p) for h, p in prices if self.first_period_start_hour <= h <= self.first_period_end_hour],
+            key=lambda x: x[1]
+        )
+        self.second_period_target = min(
+            [(h, p) for h, p in prices if self.second_period_start_hour <= h <= self.second_period_end_hour],
+            key=lambda x: x[1]
+        )
 
     def runtime_seconds(self):
         current_hour = datetime.now().hour
-        if self.first_period_target[0] == current_hour:
+        if self.first_period_target and self.first_period_target[0] == current_hour:
             return self.first_period_runtime_seconds
-        elif self.second_period_target[0] == current_hour:
+        elif self.second_period_target and self.second_period_target[0] == current_hour:
             return self.second_period_runtime_seconds
         else:
             return 0
@@ -94,10 +95,7 @@ def human_time_to_seconds(human_time):
     minutes = int(m.replace('m', '') if m else 0)
     s = match.group(3)
     seconds = int(s.replace('s', '') if s else 0)
-
-    # Convert the hours, minutes, and seconds to seconds.
     total_seconds = hours * 3600 + minutes * 60 + seconds
-
     return total_seconds
 
 
@@ -112,9 +110,8 @@ if __name__ == '__main__':
 
     plugs = []
     for section in config.sections():
-        if section.startswith("plug"):
-            if config[section].getboolean('enabled'):
-                plugs.append(Plug(config[section], tapo_email, tapo_password))
+        if section.startswith("plug") and config[section].getboolean('enabled'):
+            plugs.append(Plug(config[section], tapo_email, tapo_password))
 
     target_date = None
 
@@ -126,103 +123,114 @@ if __name__ == '__main__':
 
             logging.info(f"Loading prices data for {target_date.date()}")
 
-            url = (f"https://www.omie.es/es/file-download?parents=marginalpdbc"
-                   f"&filename=marginalpdbc_{current_date}.1")
-            response = requests.get(url)
-            if response.status_code == 200:
+            url = (
+                f"https://www.omie.es/es/file-download?parents=marginalpdbc"
+                f"&filename=marginalpdbc_{current_date}.1"
+            )
+
+            # Retry loop: keep trying every 15s until we fetch and parse successfully
+            while True:
                 try:
+                    response = requests.get(url, timeout=10)
+                    response.raise_for_status()
                     file_content = response.text
+
                     hourly_prices = []
-                    for line in file_content.split("\n"):
-                        if line and line.startswith(current_date_on_file):
+                    for line in file_content.splitlines():
+                        if line.startswith(current_date_on_file):
                             parts = line.split(";")
-                            # IMPORTANT: OMIE provides every price at the end of the hour, so we need to subtract 1 hour
-                            # This can be checked in the charts of esios.ree.es
                             hour = int(parts[3]) - 1
                             price = round(float(parts[5]) / 1000, 3)
                             hourly_prices.append((hour, price))
 
-                    email_message = f"<p>💶🔋 Electricity prices for {datetime.now().date()}:</p>"
+                    if not hourly_prices:
+                        raise ValueError("No hourly prices found")
 
-                    for hour, price in hourly_prices:
-                        email_message += f"⏱️💶 {hour}h: {price} €/kWh"
-                        email_message += "<br>"
-
-                    for plug in plugs:
-                        plug.calculate_target_hours(hourly_prices)
-                        email_message += "<p>"
-                        email_message += f"🔌 {plug.name}:"
-                        email_message += "<br>"
-                        email_message += f"⬇️💶 Cheapest hour within first period " \
-                                         f"({plug.first_period_start_hour}h - {plug.first_period_end_hour}h): " \
-                                         f"{plug.first_period_target[0]}h - {plug.first_period_target[1]} €/kWh"
-                        email_message += "<br>"
-                        email_message += (f"⏱️ Plug will run for {plug.first_period_runtime_human} "
-                                          f"({plug.first_period_runtime_seconds} seconds) in this period.")
-                        email_message += "<br>"
-                        email_message += f"⬇️💶 Cheapest hour within second period " \
-                                         f"({plug.second_period_start_hour}h - {plug.second_period_end_hour}h): " \
-                                         f"{plug.second_period_target[0]}h - {plug.second_period_target[1]} €/kWh"
-                        email_message += "<br>"
-                        email_message += (f"⏱️ Plug will run for {plug.second_period_runtime_human} "
-                                          f"({plug.second_period_runtime_seconds} seconds) in this period.")
-                        email_message += "</p>"
-
-                    # Delete previous chart
-                    try:
-                        os.remove(CHART_FILE_NAME)
-                    except OSError:
-                        pass
-
-                    ax: matplotlib.axes.Axes
-                    fig: matplotlib.pyplot.Figure
-                    (fig, ax) = plt.subplots()
-                    ax.bar([hour for hour, price in hourly_prices], [price for hour, price in hourly_prices])
-                    ax.set_title(f"Electricity prices for {target_date.date()}")
-                    ax.set_xlabel("Hour")
-                    ax.set_ylabel("Price (€/kWh)")
-                    fig.savefig(CHART_FILE_NAME)
-
-                    send_email(f'💶🔋 Electricity prices for {target_date.date()}', email_message,
-                               manager_from_email, manager_to_email, True)
-
-                    logging.info(f"Successfully downloaded prices data for {target_date.date()}. "
-                                 f"Email with all data has been sent.")
+                    break
                 except Exception as e:
-                    logging.error(f"Failed to parse prices data: {e}", e)
-            else:
-                logging.error(f"Failed to download prices data. Response code: {response.status_code}")
+                    logging.error(f"Failed to fetch/parse prices: {e}. Retrying in 15s…")
+                    time.sleep(15)
+
+            # Build and send report email + chart
+            email_message = f"<p>💶🔋 Electricity prices for {target_date.date()}:</p>"
+            for hour, price in hourly_prices:
+                email_message += f"⏱️💶 {hour}h: {price} €/kWh<br>"
+
+            for plug in plugs:
+                plug.calculate_target_hours(hourly_prices)
+
+                email_message += "<p>"
+                email_message += f"🔌 {plug.name}:<br>"
+                email_message += (
+                    f"⬇️💶 Cheapest hour within first period "
+                    f"({plug.first_period_start_hour}h - {plug.first_period_end_hour}h): "
+                    f"{plug.first_period_target[0]}h - {plug.first_period_target[1]} €/kWh<br>"
+                )
+                email_message += (
+                    f"⏱️ Plug will run for {plug.first_period_runtime_human} "
+                    f"({plug.first_period_runtime_seconds} seconds) in this period.<br>"
+                )
+                email_message += (
+                    f"⬇️💶 Cheapest hour within second period "
+                    f"({plug.second_period_start_hour}h - {plug.second_period_end_hour}h): "
+                    f"{plug.second_period_target[0]}h - {plug.second_period_target[1]} €/kWh<br>"
+                )
+                email_message += (
+                    f"⏱️ Plug will run for {plug.second_period_runtime_human} "
+                    f"({plug.second_period_runtime_seconds} seconds) in this period."
+                )
+                email_message += "</p>"
+
+            try:
+                os.remove(CHART_FILE_NAME)
+            except OSError:
+                pass
+
+            fig, ax = plt.subplots()
+            ax.bar([h for h, p in hourly_prices], [p for h, p in hourly_prices])
+            ax.set_title(f"Electricity prices for {target_date.date()}")
+            ax.set_xlabel("Hour")
+            ax.set_ylabel("Price (€/kWh)")
+            fig.savefig(CHART_FILE_NAME)
+
+            send_email(
+                f'💶🔋 Electricity prices for {target_date.date()}',
+                email_message,
+                manager_from_email,
+                manager_to_email,
+                True
+            )
+            logging.info(f"Successfully downloaded prices data for {target_date.date()} and sent email.")
+
         else:
-            # Check if we are in some of the cheapest hours and enable the plug
             for plug in plugs:
                 runtime = plug.runtime_seconds()
-                if runtime > 0:  # We are on target
+                if runtime > 0:
                     try:
                         if not plug.tapo.get_status():
                             plug.tapo.turnOn()
                             plug.tapo.turnOffWithDelay(runtime)
                             logging.info(
-                                f"Plug {plug.name} enabled at {datetime.now()} for {timedelta(seconds=runtime)}")
-                            send_email(f"🔌 Plug {plug.name} enabled",
-                                       f"🔌 Plug {plug.name} has been enabled for {timedelta(seconds=runtime)}.",
-                                       manager_from_email, manager_to_email)
+                                f"Plug {plug.name} enabled at {datetime.now()} for {timedelta(seconds=runtime)}"
+                            )
+                            send_email(
+                                f"🔌 Plug {plug.name} enabled",
+                                f"🔌 Plug {plug.name} has been enabled for {timedelta(seconds=runtime)}.",
+                                manager_from_email,
+                                manager_to_email
+                            )
                     except Exception as e:
                         logging.error(f"Failed to enable plug: {e}")
-                        # Try to re-initialize the protocol
                         if isinstance(plug.tapo.protocol, auth_protocol.AuthProtocol):
-                            # WARNING: session must be re-initialized because the plug does not seem to allow more than
-                            # one handshake in the same session.
-                            # See https://github.com/fishbigger/TapoP100/issues/62#issuecomment-1107876214
                             try:
                                 plug.tapo.protocol.session = requests.Session()
                                 plug.tapo.protocol.Initialize()
-                            except Exception as e:
-                                logging.error(f"Failed to re-initialize plug protocol: {e}")
-
-                            logging.info("Successfully re-initialized plug protocol")
+                                logging.info("Successfully re-initialized plug protocol")
+                            except Exception as e2:
+                                logging.error(f"Failed to re-initialize plug protocol: {e2}")
 
         try:
             time.sleep(30)
         except KeyboardInterrupt:
-            logging.info("Exiting...")
+            logging.info("Exiting…")
             break
