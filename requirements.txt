@@ -1,8 +1,13 @@
+annotated-types==0.7.0
+anyio==4.9.0
 certifi==2025.1.31
 charset-normalizer==3.4.1
+click==8.1.8
 contourpy==1.3.2
 cycler==0.12.1
+fastapi==0.115.12
 fonttools==4.57.0
+h11==0.14.0
 idna==3.10
 kiwisolver==1.4.8
 matplotlib==3.10.1
@@ -11,9 +16,17 @@ packaging==25.0
 pillow==11.2.1
 pkcs7==0.1.2
 pycryptodome==3.22.0
+pydantic==2.11.3
+pydantic_core==2.33.1
 PyP100 @ git+https://github.com/almottier/TapoP100.git@f6326a5548c8ce79aacf7b69d01fdad909e1ce05
 pyparsing==3.2.3
 python-dateutil==2.9.0.post0
 requests==2.32.3
+setuptools==79.0.0
 six==1.17.0
+sniffio==1.3.1
+starlette==0.46.2
+typing-inspection==0.4.0
+typing_extensions==4.13.2
 urllib3==2.4.0
+uvicorn==0.34.2

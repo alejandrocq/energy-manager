@@ -1,0 +1,43 @@
+/* container */
+.app-container {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 20px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+}
+
+/* header */
+.app-container h1 {
+    text-align: center;
+    color: #007acc;
+    margin-bottom: 24px;
+}
+
+/* plug list */
+.plug-list {
+    list-style: none;
+    margin-bottom: 32px;
+}
+
+.plug-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.plug-list li:last-child {
+    border-bottom: none;
+}
+
+/* chart */
+.price-chart {
+    display: block;
+    max-width: 100%;
+    margin: 0 auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}

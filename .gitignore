@@ -1,5 +1,5 @@
 .idea/
-venv/
+.venv/
 config.properties
 *.iml
 *.png
