@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
             logging.info(f"Loading prices data for {target_date.date()}")
 
-            url = (f"https://www.omie.es/es/file-download?parents%5B0%5D=marginalpdbc"
+            url = (f"https://www.omie.es/es/file-download?parents=marginalpdbc"
                    f"&filename=marginalpdbc_{current_date}.1")
             response = requests.get(url)
             if response.status_code == 200:
