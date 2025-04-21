@@ -1,0 +1,19 @@
+certifi==2025.1.31
+charset-normalizer==3.4.1
+contourpy==1.3.2
+cycler==0.12.1
+fonttools==4.57.0
+idna==3.10
+kiwisolver==1.4.8
+matplotlib==3.10.1
+numpy==2.2.5
+packaging==25.0
+pillow==11.2.1
+pkcs7==0.1.2
+pycryptodome==3.22.0
+PyP100 @ git+https://github.com/almottier/TapoP100.git@f6326a5548c8ce79aacf7b69d01fdad909e1ce05
+pyparsing==3.2.3
+python-dateutil==2.9.0.post0
+requests==2.32.3
+six==1.17.0
+urllib3==2.4.0
