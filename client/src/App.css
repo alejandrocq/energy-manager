@@ -1,23 +1,21 @@
-/* container */
 .app-container {
-    max-width: 800px;
+    max-width: 700px;
     margin: 40px auto;
     padding: 20px;
     background: #ffffff;
     border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* header */
 .app-container h1 {
     text-align: center;
     color: #007acc;
     margin-bottom: 24px;
 }
 
-/* plug list */
 .plug-list {
     list-style: none;
+    padding: 0;
     margin-bottom: 32px;
 }
 
@@ -25,19 +23,73 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px;
-    border-bottom: 1px solid #e0e0e0;
+    padding: 14px 20px;
+    margin-bottom: 12px;
+    background: #fafafa;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    transition: background 0.2s;
 }
 
-.plug-list li:last-child {
-    border-bottom: none;
+.plug-list li:hover {
+    background: #f0f8ff;
 }
 
-/* chart */
-.price-chart {
-    display: block;
-    max-width: 100%;
-    margin: 0 auto;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+.plug-info {
+    display: flex;
+    align-items: center;
+}
+
+.plug-icon {
+    font-size: 1.5rem;
+    margin-right: 12px;
+}
+
+.plug-name {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.status-label {
+    margin-left: 12px;
+    font-size: 0.9rem;
+}
+
+.timer-label {
+    margin-left: 16px;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.toggle-btn.on {
+    background-color: #e74c3c;
+    color: #fff;
+}
+
+.toggle-btn.off {
+
+    background-color: #2ecc71;
+    color: #fff;
+}
+
+.toggle-btn:hover {
+    opacity: 0.9;
+    transform: scale(1.03);
+}
+
+.toggle-btn:active {
+    transform: scale(0.97);
 }
