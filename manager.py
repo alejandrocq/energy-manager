@@ -226,8 +226,26 @@ if __name__ == '__main__':
                                 plug.tapo.protocol.session = requests.Session()
                                 plug.tapo.protocol.Initialize()
                                 logging.info("Successfully re-initialized plug protocol")
-                            except Exception as e2:
-                                logging.error(f"Failed to re-initialize plug protocol: {e2}")
+                            except Exception as err:
+                                logging.error(f"Failed to re-initialize plug protocol: {err}")
+                else:
+                    # Plug is ON outside the cheapest hours with no scheduled delay: set default runtime
+                    try:
+                        if plug.tapo.get_status():
+                            plug.tapo.turnOffWithDelay(plug.first_period_runtime_seconds)
+                            logging.info(
+                                f"Plug {plug.name} is on outside cheapest hours, "
+                                f"scheduled turn-off in {timedelta(seconds=plug.first_period_runtime_seconds)}"
+                            )
+                            send_email(
+                                f"🔌 Plug {plug.name} scheduled turn off",
+                                f"Plug {plug.name} was on outside cheapest hours and will be turned off in "
+                                f"{timedelta(seconds=plug.first_period_runtime_seconds)}.",
+                                manager_from_email,
+                                manager_to_email
+                            )
+                    except Exception as e:
+                        logging.error(f"Failed to set default runtime for plug: {e}")
 
         try:
             time.sleep(30)
