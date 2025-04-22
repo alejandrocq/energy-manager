@@ -2,7 +2,6 @@ import configparser
 import os
 import smtplib
 import time
-import matplotlib.axes
 import requests
 import logging
 import re
@@ -250,8 +249,9 @@ if __name__ == '__main__':
                     try:
                         if plug.tapo.get_status() and plug.get_rule_remain_seconds() is None:
                             default_runtime = plug.periods[0]['runtime_seconds'] if plug.periods else 0
-                            if default_runtime is 0:
+                            if default_runtime == 0:
                                 continue
+
                             plug.tapo.turnOffWithDelay(default_runtime)
                             logging.info(
                                 f"Plug {plug.name} is on outside cheapest hours, "
