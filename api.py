@@ -23,6 +23,7 @@ config.read("config.properties")
 tapo_email    = config.get("credentials", "tapo_email")
 tapo_password = config.get("credentials", "tapo_password")
 
+# TODO All of this should be handled by energy_manager
 plugs = []
 for section in config.sections():
     if section.startswith("plug") and config[section].getboolean("enabled"):
@@ -48,19 +49,7 @@ async def list_plugs():
             status = None
 
         # 2) read countdown rules for remaining seconds
-        timer = None
-        try:
-            rules = plug.tapo.getCountDownRules()['rule_list']
-
-            if rules:
-                # pick an enabled rule if any
-                rule = next((r for r in rules if r.get("enable")), rules[0])
-                enabled = rule.get("enable")
-                rem = rule.get("remain")
-                if enabled and isinstance(rem, (int, float)) and rem > 0:
-                    timer = int(rem)
-        except Exception:
-            logging.exception("Error reading countdown rules for %s", plug.name)
+        timer = plug.get_rule_remain_seconds()
 
         out.append({
             "name":            plug.name,

@@ -54,6 +54,24 @@ class Plug:
         else:
             return 0
 
+    def get_rule_remain_seconds(self):
+        result = None
+
+        try:
+            rules = self.tapo.getCountDownRules()['rule_list']
+
+            if rules:
+                # pick an enabled rule if any
+                rule = next((r for r in rules if r.get("enable")), rules[0])
+                enabled = rule.get("enable")
+                rem = rule.get("remain")
+                if enabled and isinstance(rem, (int, float)) and rem > 0:
+                    result = int(rem)
+        except Exception as e:
+            logging.error(f"Failed to get countdown rules: {e}")
+
+        return result
+
 
 def send_email(subject, content, from_email, to_email, attach_chart=False):
     mime_message = MIMEMultipart("related")
@@ -231,7 +249,7 @@ if __name__ == '__main__':
                 else:
                     # Plug is ON outside the cheapest hours with no scheduled delay: set default runtime
                     try:
-                        if plug.tapo.get_status():
+                        if plug.tapo.get_status() and plug.get_rule_remain_seconds() is None:
                             plug.tapo.turnOffWithDelay(plug.first_period_runtime_seconds)
                             logging.info(
                                 f"Plug {plug.name} is on outside cheapest hours, "
