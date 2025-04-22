@@ -22,46 +22,52 @@ class Plug:
     def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str):
         self.name = plug_config.get('name')
         self.address = plug_config.get('address')
-        self.first_period_start_hour = plug_config.getint('first_period_start_hour')
-        self.first_period_end_hour = plug_config.getint('first_period_end_hour')
-        self.first_period_runtime_human = plug_config.get('first_period_runtime_human')
-        self.first_period_runtime_seconds = human_time_to_seconds(self.first_period_runtime_human)
-        self.second_period_start_hour = plug_config.getint('second_period_start_hour')
-        self.second_period_end_hour = plug_config.getint('second_period_end_hour')
-        self.second_period_runtime_human = plug_config.get('second_period_runtime_human')
-        self.second_period_runtime_seconds = human_time_to_seconds(self.second_period_runtime_human)
         self.tapo = PyP100.Switchable(self.address, email, password)
 
-        self.first_period_target = None
-        self.second_period_target = None
+        periods_temp = {}
+        for key, val in plug_config.items():
+            m = re.match(r'period(\d+)_(start|end)_hour', key)
+            if m:
+                idx = int(m.group(1))
+                field = 'start_hour' if m.group(2) == 'start' else 'end_hour'
+                periods_temp.setdefault(idx, {})[field] = int(val)
+            m2 = re.match(r'period(\d+)_runtime_human', key)
+            if m2:
+                idx = int(m2.group(1))
+                periods_temp.setdefault(idx, {})['runtime_human'] = val
+        self.periods = []
+        for idx in sorted(periods_temp):
+            p = periods_temp[idx]
+            human = p.get('runtime_human')
+            secs = human_time_to_seconds(human) if human else 0
+            self.periods.append({
+                'start_hour': p.get('start_hour', 0),
+                'end_hour': p.get('end_hour', 0),
+                'runtime_human': human,
+                'runtime_seconds': secs,
+                'target': None
+            })
 
     def calculate_target_hours(self, prices: list[tuple[int, float]]):
-        self.first_period_target = min(
-            [(h, p) for h, p in prices if self.first_period_start_hour <= h <= self.first_period_end_hour],
-            key=lambda x: x[1]
-        )
-        self.second_period_target = min(
-            [(h, p) for h, p in prices if self.second_period_start_hour <= h <= self.second_period_end_hour],
-            key=lambda x: x[1]
-        )
+        for period in self.periods:
+            period['target'] = min(
+                [(h, p) for h, p in prices if period['start_hour'] <= h <= period['end_hour']],
+                key=lambda x: x[1]
+            )
 
     def runtime_seconds(self):
         current_hour = datetime.now().hour
-        if self.first_period_target and self.first_period_target[0] == current_hour:
-            return self.first_period_runtime_seconds
-        elif self.second_period_target and self.second_period_target[0] == current_hour:
-            return self.second_period_runtime_seconds
-        else:
-            return 0
+        for period in self.periods:
+            tgt = period.get('target')
+            if tgt and tgt[0] == current_hour:
+                return period['runtime_seconds']
+        return 0
 
     def get_rule_remain_seconds(self):
         result = None
-
         try:
             rules = self.tapo.getCountDownRules()['rule_list']
-
             if rules:
-                # pick an enabled rule if any
                 rule = next((r for r in rules if r.get("enable")), rules[0])
                 enabled = rule.get("enable")
                 rem = rule.get("remain")
@@ -69,7 +75,6 @@ class Plug:
                     result = int(rem)
         except Exception as e:
             logging.error(f"Failed to get countdown rules: {e}")
-
         return result
 
 
@@ -169,7 +174,6 @@ if __name__ == '__main__':
                     logging.error(f"Failed to fetch/parse prices: {e}. Retrying in 15s…")
                     time.sleep(15)
 
-            # Build and send report email + chart
             email_message = f"<p>💶🔋 Electricity prices for {target_date.date()}:</p>"
             for hour, price in hourly_prices:
                 email_message += f"⏱️💶 {hour}h: {price} €/kWh<br>"
@@ -179,24 +183,20 @@ if __name__ == '__main__':
 
                 email_message += "<p>"
                 email_message += f"🔌 {plug.name}:<br>"
-                email_message += (
-                    f"⬇️💶 Cheapest hour within first period "
-                    f"({plug.first_period_start_hour}h - {plug.first_period_end_hour}h): "
-                    f"{plug.first_period_target[0]}h - {plug.first_period_target[1]} €/kWh<br>"
-                )
-                email_message += (
-                    f"⏱️ Plug will run for {plug.first_period_runtime_human} "
-                    f"({plug.first_period_runtime_seconds} seconds) in this period.<br>"
-                )
-                email_message += (
-                    f"⬇️💶 Cheapest hour within second period "
-                    f"({plug.second_period_start_hour}h - {plug.second_period_end_hour}h): "
-                    f"{plug.second_period_target[0]}h - {plug.second_period_target[1]} €/kWh<br>"
-                )
-                email_message += (
-                    f"⏱️ Plug will run for {plug.second_period_runtime_human} "
-                    f"({plug.second_period_runtime_seconds} seconds) in this period."
-                )
+                for period in plug.periods:
+                    sh = period['start_hour']
+                    eh = period['end_hour']
+                    th, tp = period['target']
+                    rt_h = period['runtime_human']
+                    rt_s = period['runtime_seconds']
+                    email_message += (
+                        f"⬇️💶 Cheapest hour within period ({sh}h - {eh}h): "
+                        f"{th}h - {tp} €/kWh<br>"
+                    )
+                    email_message += (
+                        f"⏱️ Plug will run for {rt_h} "
+                        f"({rt_s} seconds) in this period.<br>"
+                    )
                 email_message += "</p>"
 
             try:
@@ -247,18 +247,20 @@ if __name__ == '__main__':
                             except Exception as err:
                                 logging.error(f"Failed to re-initialize plug protocol: {err}")
                 else:
-                    # Plug is ON outside the cheapest hours with no scheduled delay: set default runtime
                     try:
                         if plug.tapo.get_status() and plug.get_rule_remain_seconds() is None:
-                            plug.tapo.turnOffWithDelay(plug.first_period_runtime_seconds)
+                            default_runtime = plug.periods[0]['runtime_seconds'] if plug.periods else 0
+                            if default_runtime is 0:
+                                continue
+                            plug.tapo.turnOffWithDelay(default_runtime)
                             logging.info(
                                 f"Plug {plug.name} is on outside cheapest hours, "
-                                f"scheduled turn-off in {timedelta(seconds=plug.first_period_runtime_seconds)}"
+                                f"scheduled turn-off in {timedelta(seconds=default_runtime)}"
                             )
                             send_email(
                                 f"🔌 Plug {plug.name} scheduled turn off",
                                 f"Plug {plug.name} was on outside cheapest hours and will be turned off in "
-                                f"{timedelta(seconds=plug.first_period_runtime_seconds)}.",
+                                f"{timedelta(seconds=default_runtime)}.",
                                 manager_from_email,
                                 manager_to_email
                             )
