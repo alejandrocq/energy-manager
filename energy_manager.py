@@ -10,11 +10,72 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
-from PyP100 import PyP100, auth_protocol
+from PyP100 import PyP100, auth_protocol, MeasureInterval
 
 CHART_FILE_NAME = "prices_chart.png"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+config = configparser.ConfigParser()
+config.read('config.properties')
+manager_from_email = config.get('email', 'from_email')
+manager_to_email = config.get('email', 'to_email')
+tapo_email = config.get('credentials', 'tapo_email')
+tapo_password = config.get('credentials', 'tapo_password')
+
+
+def human_time_to_seconds(human_time):
+    match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
+    h = match.group(1)
+    hours = int(h.replace('h', '') if h else 0)
+    m = match.group(2)
+    minutes = int(m.replace('m', '') if m else 0)
+    s = match.group(3)
+    seconds = int(s.replace('s', '') if s else 0)
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def send_email(subject, content, from_email, to_email, attach_chart=False):
+    mime_message = MIMEMultipart("related")
+    mime_message["From"] = from_email
+    mime_message["To"] = to_email
+    mime_message["Subject"] = subject
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <body>
+    {content}
+    {"<br><img src='cid:chart'>" if attach_chart else ""}
+    </body>
+    </html>
+    """
+    mime_text = MIMEText(html_body, "html", _charset="utf-8")
+    mime_message.attach(mime_text)
+    if attach_chart:
+        with open(CHART_FILE_NAME, "rb") as f:
+            chart = MIMEImage(f.read())
+        chart.add_header("Content-ID", "<chart>")
+        mime_message.attach(chart)
+    try:
+        with smtplib.SMTP('localhost') as smtp_server:
+            smtp_server.sendmail(from_email, to_email, mime_message.as_string())
+    except Exception as err:
+        logging.error(f"Failed to send email: {err}")
+
+
+def get_plugs():
+    config = configparser.ConfigParser()
+    config.read('config.properties')
+    plugs = []
+    for section in config.sections():
+        if section.startswith("plug") and config[section].getboolean('enabled'):
+            plugs.append(Plug(config[section], tapo_email, tapo_password))
+    return plugs
+
+
+def get_plug_energy(address):
+    p = next(x for x in get_plugs() if x.address == address)
+    return p.get_hourly_energy()
 
 
 class Plug:
@@ -76,65 +137,26 @@ class Plug:
             logging.error(f"Failed to get countdown rules: {e}")
         return result
 
-
-def send_email(subject, content, from_email, to_email, attach_chart=False):
-    mime_message = MIMEMultipart("related")
-    mime_message["From"] = from_email
-    mime_message["To"] = to_email
-    mime_message["Subject"] = subject
-
-    html_body = f"""
-    <!DOCTYPE html>
-    <html>
-    <body>
-    {content}
-    {"<br><img src='cid:chart'>" if attach_chart else ""}
-    </body>
-    </html>
-    """
-
-    mime_text = MIMEText(html_body, "html", _charset="utf-8")
-    mime_message.attach(mime_text)
-
-    if attach_chart:
-        with open(CHART_FILE_NAME, "rb") as f:
-            chart = MIMEImage(f.read())
-        chart.add_header("Content-ID", "<chart>")
-        mime_message.attach(chart)
-
-    try:
-        with smtplib.SMTP('localhost') as smtp_server:
-            smtp_server.sendmail(from_email, to_email, mime_message.as_string())
-    except Exception as err:
-        logging.error(f"Failed to send email: {err}")
-
-
-def human_time_to_seconds(human_time):
-    match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
-    h = match.group(1)
-    hours = int(h.replace('h', '') if h else 0)
-    m = match.group(2)
-    minutes = int(m.replace('m', '') if m else 0)
-    s = match.group(3)
-    seconds = int(s.replace('s', '') if s else 0)
-    total_seconds = hours * 3600 + minutes * 60 + seconds
-    return total_seconds
+    def get_hourly_energy(self):
+        now = datetime.now()
+        day_start = datetime(now.year, now.month, now.day)
+        start_ts = int(day_start.timestamp())
+        end_ts = int(now.timestamp())
+        resp = self.tapo.request("get_energy_data", {"start_timestamp": start_ts, "end_timestamp": end_ts, "interval": MeasureInterval.HOURS.value})
+        raw = resp.get('data', [])
+        base_ts = resp.get('start_timestamp', start_ts)
+        interval_min = resp.get('interval', 60)
+        step = interval_min * 60
+        out = []
+        for i, val in enumerate(raw):
+            ts = base_ts + i * step
+            hr = datetime.fromtimestamp(ts).hour
+            kwh = val / 1000
+            out.append({'hour': hr, 'value': kwh})
+        return out
 
 
 if __name__ == '__main__':
-    config = configparser.ConfigParser()
-    config.read('config.properties')
-
-    manager_from_email = config.get('email', 'from_email')
-    manager_to_email = config.get('email', 'to_email')
-    tapo_email = config.get('credentials', 'tapo_email')
-    tapo_password = config.get('credentials', 'tapo_password')
-
-    plugs = []
-    for section in config.sections():
-        if section.startswith("plug") and config[section].getboolean('enabled'):
-            plugs.append(Plug(config[section], tapo_email, tapo_password))
-
     target_date = None
 
     while True:
@@ -177,7 +199,7 @@ if __name__ == '__main__':
             for hour, price in hourly_prices:
                 email_message += f"⏱️💶 {hour}h: {price} €/kWh<br>"
 
-            for plug in plugs:
+            for plug in get_plugs():
                 plug.calculate_target_hours(hourly_prices)
 
                 email_message += "<p>"
@@ -218,9 +240,8 @@ if __name__ == '__main__':
                 True
             )
             logging.info(f"Successfully downloaded prices data for {target_date.date()} and sent email.")
-
         else:
-            for plug in plugs:
+            for plug in get_plugs():
                 runtime = plug.runtime_seconds()
                 if runtime > 0:
                     try:

@@ -1,105 +1,156 @@
-import React, { useEffect, useState } from 'react';
-import './App.css';
+import React, {useEffect, useState} from 'react'
+import './App.css'
+import {
+    Chart as ChartJS,
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend
+} from 'chart.js'
+import {Line} from 'react-chartjs-2'
+
+ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend
+)
 
 interface Plug {
-    name: string;
-    address: string;
-    is_on: boolean | null;
-    timer_remaining: number | null;
+    name: string
+    address: string
+    is_on: boolean | null
+    timer_remaining: number | null
 }
 
-const API_BASE = '/api';
+interface EnergyPoint {
+    hour: number
+    value: number
+}
+
+const API = '/api'
 
 const fmtTime = (sec: number): string => {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
+    const h = Math.floor(sec / 3600)
+    const m = Math.floor((sec % 3600) / 60)
+    const s = sec % 60
     return `${h.toString().padStart(2, '0')}:${m
         .toString()
-        .padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-};
+        .padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
 
 const App: React.FC = () => {
-    const [plugs, setPlugs] = useState<Plug[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [plugs, setPlugs] = useState<Plug[]>([])
+    const [open, setOpen] = useState<string | null>(null)
+    const [energyData, setEnergyData] = useState<Record<string, EnergyPoint[]>>({})
 
     const fetchPlugs = async () => {
-        setLoading(true);
-        try {
-            const res = await fetch(`${API_BASE}/plugs`);
-            const data = (await res.json()) as Plug[];
-            setPlugs(data);
-        } catch (err) {
-            console.error('Failed to fetch plugs', err);
-        }
-        setLoading(false);
-    };
+        const res = await fetch(`${API}/plugs`)
+        setPlugs(await res.json())
+    }
+
+    const fetchEnergy = async (addr: string) => {
+        const res = await fetch(`${API}/plugs/${addr}/energy`)
+        const data = await res.json()
+        setEnergyData(ed => ({...ed, [addr]: data}))
+    }
 
     useEffect(() => {
-        fetchPlugs();
-        const interval = setInterval(fetchPlugs, 10_000);
-        return () => clearInterval(interval);
-    }, []);
+        fetchPlugs()
+        const interval = setInterval(fetchPlugs, 30000)
+        return () => clearInterval(interval)
+    }, [])
 
-    const toggle = async (plug: Plug) => {
-        const action = plug.is_on ? 'off' : 'on';
-        try {
-            await fetch(`${API_BASE}/plugs/${plug.address}/${action}`, {
-                method: 'POST',
-            });
-            fetchPlugs();
-        } catch (err) {
-            console.error(err);
+    const expand = (addr: string) => {
+        if (open === addr) setOpen(null)
+        else {
+            setOpen(addr)
+            fetchEnergy(addr)
         }
-    };
+    }
+
+    const togglePlug = async (plug: Plug) => {
+        if (!plug.is_on) {
+            await fetch(`${API}/plugs/${plug.address}/on`, {method: 'POST'})
+        } else {
+            await fetch(`${API}/plugs/${plug.address}/off`, {method: 'POST'})
+        }
+        await fetchPlugs()
+        if (open === plug.address) {
+            await fetchEnergy(plug.address)
+        }
+    }
 
     return (
         <div className="app-container">
-            <h1>🔌 Energy Manager</h1>
-            {loading ? (
-                <p>Loading…</p>
-            ) : (
-                <>
-                    <ul className="plug-list">
-                        {plugs.map((p) => (
-                            <li key={p.address}>
-                                <div className="plug-info">
-                                    <span className="plug-icon">🔌</span>
-                                    <span className="plug-name">{p.name}</span>
-                                    {p.is_on != null && (
-                                        <span className="status-label">
-                      {p.is_on ? '🟢 On' : '🔴 Off'}
-                    </span>
-                                    )}
-                                    {p.timer_remaining != null && (
-                                        <span className="timer-label">
-                      ⏳ {fmtTime(p.timer_remaining)}
-                    </span>
-                                    )}
-                                </div>
-                                <button
-                                    className={`toggle-btn ${p.is_on ? 'on' : 'off'}`}
-                                    onClick={() => toggle(p)}
-                                >
-                  <span className="btn-icon">
-                    {p.is_on ? '🔴' : '🟢'}
-                  </span>
-                                    {p.is_on ? 'Turn Off' : 'Turn On'}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
+            <h1>Energy Manager</h1>
+            <ul className="plug-list">
+                {plugs.map(p => (
+                    <li key={p.address} className="plug-item">
+                        <div className="plug-header" onClick={() => expand(p.address)}>
+                            <span className="plug-icon">🔌</span>
+                            <span className="plug-name">{p.name}</span>
+                            {p.is_on != null && (
+                                <span className="status-label">
+                  {p.is_on ? '🟢 On' : '🔴 Off'}
+                </span>
+                            )}
+                            {p.timer_remaining != null && (
+                                <span className="timer-label">⏳ {fmtTime(p.timer_remaining)}</span>
+                            )}
+                            <button
+                                className="plug-toggle-btn"
+                                onClick={e => {
+                                    e.stopPropagation()
+                                    togglePlug(p)
+                                }}
+                            >
+                                {p.is_on ? 'Turn Off' : 'Turn On'}
+                            </button>
+                        </div>
+                        {open === p.address && energyData[p.address] && (
+                            <div className="chart-container">
+                                <Line
+                                    data={{
+                                        labels: energyData[p.address].map(pt => pt.hour.toString()),
+                                        datasets: [
+                                            {
+                                                label: 'Energy (kWh)',
+                                                data: energyData[p.address].map(pt => pt.value),
+                                                borderColor: '#007acc',
+                                                backgroundColor: 'rgba(0,122,204,0.2)'
+                                            }
+                                        ]
+                                    }}
+                                    options={{
+                                        responsive: true,
+                                        plugins: {
+                                            legend: {position: 'top'},
+                                            title: {display: true, text: 'Hourly Energy Usage'}
+                                        }
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </li>
+                ))}
+            </ul>
 
-                    <h2>📈 Today’s Price Curve</h2>
-                    <img
-                        src="/api/static/prices_chart.png"
-                        alt="Prices chart"
-                        className="price-chart"
-                    />
-                </>
-            )}
+            <h2>📈 Today’s Price Curve</h2>
+            <div className="price-chart">
+                <img
+                    src="/api/static/prices_chart.png"
+                    alt="Prices chart"
+                />
+            </div>
         </div>
-    );
-};
+    )
+}
 
-export default App;
+export default App
