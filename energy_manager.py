@@ -222,9 +222,9 @@ if __name__ == '__main__':
             logging.info(f"Successfully downloaded prices data for {target_date.date()} and sent email.")
         else:
             for plug in get_plugs():
-                runtime = plug.runtime_seconds()
-                if runtime > 0:
-                    try:
+                try:
+                    runtime = plug.runtime_seconds()
+                    if runtime > 0:
                         if not plug.tapo.get_status():
                             plug.tapo.turnOn()
                             plug.tapo.turnOffWithDelay(runtime)
@@ -237,17 +237,7 @@ if __name__ == '__main__':
                                 manager_from_email,
                                 manager_to_email
                             )
-                    except Exception as e:
-                        logging.error(f"Failed to enable plug: {e}")
-                        if isinstance(plug.tapo.protocol, auth_protocol.AuthProtocol):
-                            try:
-                                plug.tapo.protocol.session = requests.Session()
-                                plug.tapo.protocol.Initialize()
-                                logging.info("Successfully re-initialized plug protocol")
-                            except Exception as err:
-                                logging.error(f"Failed to re-initialize plug protocol: {err}")
-                else:
-                    try:
+                    else:
                         if plug.tapo.get_status() and plug.get_rule_remain_seconds() is None:
                             default_runtime = plug.periods[0]['runtime_seconds'] if plug.periods else 0
                             if default_runtime == 0:
@@ -265,8 +255,15 @@ if __name__ == '__main__':
                                 manager_from_email,
                                 manager_to_email
                             )
-                    except Exception as e:
-                        logging.error(f"Failed to set default runtime for plug: {e}")
+                except Exception as err:
+                    logging.error(f"Error while processing plug {plug.name}: {err}")
+                    if isinstance(plug.tapo.protocol, auth_protocol.AuthProtocol):
+                        try:
+                            plug.tapo.protocol.session = requests.Session()
+                            plug.tapo.protocol.Initialize()
+                            logging.info("Successfully re-initialized plug protocol")
+                        except Exception as err:
+                            logging.error(f"Failed to re-initialize plug protocol: {err}")
 
         try:
             time.sleep(30)
