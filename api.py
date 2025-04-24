@@ -1,7 +1,7 @@
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-
 import energy_manager as em
 
 app = FastAPI()
@@ -11,7 +11,6 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*']
 )
-app.mount('/api/static', StaticFiles(directory='.'), name='static')
 
 @app.get('/api/plugs')
 async def plugs():
@@ -47,6 +46,11 @@ async def plug_off(address: str):
             p.tapo.turnOff()
             return {'address':address,'turned_off':True}
     raise HTTPException(404,'not found')
+
+@app.get('/api/prices')
+async def get_prices():
+    data = em.provider.get_prices(datetime.now())
+    return [{'hour': h, 'value': p} for h, p in data]
 
 if __name__=='__main__':
     import uvicorn

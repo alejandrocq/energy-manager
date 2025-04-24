@@ -29,7 +29,7 @@ interface Plug {
     timer_remaining: number | null
 }
 
-interface EnergyPoint {
+interface DataPoint {
     hour: number
     value: number
 }
@@ -48,7 +48,8 @@ const fmtTime = (sec: number): string => {
 const App: React.FC = () => {
     const [plugs, setPlugs] = useState<Plug[]>([])
     const [open, setOpen] = useState<string | null>(null)
-    const [energyData, setEnergyData] = useState<Record<string, EnergyPoint[]>>({})
+    const [energyData, setEnergyData] = useState<Record<string, DataPoint[]>>({})
+    const [prices, setPrices] = useState<DataPoint[]>([])
 
     const fetchPlugs = async () => {
         const res = await fetch(`${API}/plugs`)
@@ -61,9 +62,17 @@ const App: React.FC = () => {
         setEnergyData(ed => ({...ed, [addr]: data}))
     }
 
+    const fetchPrices = async () => {
+        const res = await fetch(`${API}/prices`)
+        setPrices(await res.json())
+    }
+
     useEffect(() => {
         fetchPlugs()
-        const interval = setInterval(fetchPlugs, 30000)
+        fetchPrices()
+        const interval = setInterval(() => {
+            fetchPlugs()
+        }, 10000)
         return () => clearInterval(interval)
     }, [])
 
@@ -143,10 +152,29 @@ const App: React.FC = () => {
             </ul>
 
             <h2>📈 Today’s Price Curve</h2>
-            <div className="price-chart">
-                <img
-                    src="/api/static/prices_chart.png"
-                    alt="Prices chart"
+            <div className="chart-container">
+                <Line
+                    data={{
+                        labels: prices.map(pt => pt.hour.toString()),
+                        datasets: [
+                            {
+                                label: 'Price (€/kWh)',
+                                data: prices.map(pt => pt.value),
+                                borderColor: '#e67e22',
+                                backgroundColor: 'rgba(230,126,34,0.2)'
+                            }
+                        ]
+                    }}
+                    options={{
+                        responsive: true,
+                        plugins: {
+                            legend: {position: 'top'},
+                            title: {display: true, text: 'Electricity Prices Today'}
+                        },
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }}
                 />
             </div>
         </div>
