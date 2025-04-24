@@ -11,6 +11,7 @@ from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from PyP100 import PyP100, auth_protocol, MeasureInterval
+from providers import PROVIDERS
 
 CHART_FILE_NAME = "prices_chart.png"
 
@@ -18,10 +19,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 config = configparser.ConfigParser()
 config.read('config.properties')
+
 manager_from_email = config.get('email', 'from_email')
 manager_to_email = config.get('email', 'to_email')
+
 tapo_email = config.get('credentials', 'tapo_email')
 tapo_password = config.get('credentials', 'tapo_password')
+
+provider_key = config.get('settings', 'provider')
+provider = PROVIDERS[provider_key]()
 
 
 def human_time_to_seconds(human_time):
@@ -167,33 +173,7 @@ if __name__ == '__main__':
 
             logging.info(f"Loading prices data for {target_date.date()}")
 
-            url = (
-                f"https://www.omie.es/es/file-download?parents=marginalpdbc"
-                f"&filename=marginalpdbc_{current_date}.1"
-            )
-
-            # Retry loop: keep trying every 15s until we fetch and parse successfully
-            while True:
-                try:
-                    response = requests.get(url, timeout=10)
-                    response.raise_for_status()
-                    file_content = response.text
-
-                    hourly_prices = []
-                    for line in file_content.splitlines():
-                        if line.startswith(current_date_on_file):
-                            parts = line.split(";")
-                            hour = int(parts[3]) - 1
-                            price = round(float(parts[5]) / 1000, 3)
-                            hourly_prices.append((hour, price))
-
-                    if not hourly_prices:
-                        raise ValueError("No hourly prices found")
-
-                    break
-                except Exception as e:
-                    logging.error(f"Failed to fetch/parse prices: {e}. Retrying in 15s…")
-                    time.sleep(15)
+            hourly_prices = provider.get_prices(target_date)
 
             email_message = f"<p>💶🔋 Electricity prices for {target_date.date()}:</p>"
             for hour, price in hourly_prices:
