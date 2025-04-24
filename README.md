@@ -3,7 +3,7 @@
 An intelligent energy‐saving app that schedules your Tapo smart plugs based on electricity prices 📈.  
 Includes a FastAPI backend and a Vite+React frontend with live plug control and usage charts.
 
----
+![example ui](docs/example_ui.png)
 
 ## 🚀 Features
 
@@ -13,43 +13,20 @@ Includes a FastAPI backend and a Vite+React frontend with live plug control and 
 - 🌐 REST API to list plugs, toggle on/off, view active countdown
 - 📊 React UI with interactive plug details and hourly energy usage chart
 
----
-
-## 📂 Project Structure
-
-```
-.
-├── api.py
-├── energy_manager.py
-├── config.properties
-├── requirements.txt
-└── client
-    ├── index.html
-    ├── package.json
-    ├── tsconfig.json
-    ├── vite.config.js
-    └── src
-        ├── App.tsx
-        ├── main.tsx
-        ├── App.css
-        └── index.css
-```
-
----
-
 ## 🛠️ Prerequisites
 
 - Python 3.9+
-- Node.js 16+ & npm
-- Tapo account credentials & local SMTP server (or adjust `send_email`)
-
----
+- Node.js 18+ & npm
+- Tapo account credentials & local SMTP server.
 
 ## ⚙️ Configuration
 
 Create `config.properties` in the project root:
 
 ```properties
+[settings]
+provider = your_energy_provider
+
 [email]
 from_email = your_from_email@example.com
 to_email   = your_to_email@example.com
@@ -60,7 +37,7 @@ tapo_password = your_tapo_password
 
 [plug1]
 enabled                   = true
-name                      = Kitchen Plug
+name                      = Water heater
 address                   = 192.168.1.10
 period1_start_hour        = 0
 period1_end_hour          = 6
@@ -71,20 +48,14 @@ period2_runtime_human     = 1h
 
 [plug2]
 enabled                   = true
-name                      = Washing Machine
+name                      = Multipurpose
 address                   = 192.168.1.11
-period1_start_hour        = 8
-period1_end_hour          = 12
-period1_runtime_human     = 1h30m
-period2_start_hour        = 20
-period2_end_hour          = 22
-period2_runtime_human     = 45m
-period3_start_hour        = 0
-period3_end_hour          = 3
-period3_runtime_human     = 15m
-```
 
----
+[plug3]
+enabled                   = true
+name                      = Home server
+address                   = 192.168.1.12
+```
 
 ## 🏗️ Development
 
@@ -113,8 +84,6 @@ period3_runtime_human     = 15m
     - Frontend runs on http://localhost:5173
     - Proxies `/api` → http://localhost:8000
 
----
-
 ## 🚀 Production
 
 1. Build frontend
@@ -133,14 +102,10 @@ period3_runtime_human     = 15m
    uvicorn api:app --host 0.0.0.0 --port 8000
    ```
 
----
-
 ## 🔧 Troubleshooting
 
 - Ensure Tapo IPs are reachable on your LAN
 - Check SMTP logs for email delivery
 - Increase logging level in `energy_manager.py` if needed
-
----
 
 Feel free to ⭐ the repo!

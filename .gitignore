@@ -3,3 +3,4 @@
 config.properties
 *.iml
 *.png
+!docs/*.png
