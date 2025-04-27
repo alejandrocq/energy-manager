@@ -52,7 +52,7 @@ async def get_prices():
     data = em.provider.get_prices(datetime.now())
     return [{'hour': h, 'value': p} for h, p in data]
 
-app.mount("/", StaticFiles(directory="client/dist", html=True), name="client")
+app.mount("/", StaticFiles(directory="client/dist", html=True, check_dir=False), name="client")
 
 if __name__=='__main__':
     import uvicorn
