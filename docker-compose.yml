@@ -8,7 +8,7 @@ services:
     environment:
       - TZ=${TZ:-UTC}
     volumes:
-      - "${CONFIG_PATH:-./config.properties}:/app/config.properties:ro"
+      - "${CONFIG_PATH:-./config/}:/app/config/:ro"
     ports:
       - "8000:8000"
     restart: unless-stopped

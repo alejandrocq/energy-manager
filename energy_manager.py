@@ -13,12 +13,13 @@ from datetime import datetime, timedelta
 from PyP100 import PyP100, auth_protocol, MeasureInterval
 from providers import PROVIDERS
 
+CONFIG_FILE_PATH = "config/config.properties"
 CHART_FILE_NAME = "prices_chart.png"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 config = configparser.ConfigParser()
-config.read('config.properties')
+config.read(CONFIG_FILE_PATH)
 
 manager_from_email = config.get('email', 'from_email')
 manager_to_email = config.get('email', 'to_email')
@@ -71,7 +72,7 @@ def send_email(subject, content, from_email, to_email, attach_chart=False):
 
 def get_plugs():
     config = configparser.ConfigParser()
-    config.read('config.properties')
+    config.read(CONFIG_FILE_PATH)
     plugs = []
     for section in config.sections():
         if section.startswith("plug") and config[section].getboolean('enabled'):
