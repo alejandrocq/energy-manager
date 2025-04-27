@@ -139,6 +139,7 @@ const App: React.FC = () => {
                                     }}
                                     options={{
                                         responsive: true,
+                                        maintainAspectRatio: false,
                                         plugins: {
                                             legend: {position: 'top'},
                                             title: {display: true, text: 'Hourly Energy Usage'}
@@ -167,6 +168,7 @@ const App: React.FC = () => {
                     }}
                     options={{
                         responsive: true,
+                        maintainAspectRatio: false,
                         plugins: {
                             legend: {position: 'top'},
                             title: {display: true, text: 'Electricity Prices Today'}
