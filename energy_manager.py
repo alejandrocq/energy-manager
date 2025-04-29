@@ -27,8 +27,7 @@ manager_to_email = config.get('email', 'to_email')
 tapo_email = config.get('credentials', 'tapo_email')
 tapo_password = config.get('credentials', 'tapo_password')
 
-provider_key = config.get('settings', 'provider')
-provider = PROVIDERS[provider_key]()
+provider = PROVIDERS[config.get('settings', 'provider')]()
 
 
 def human_time_to_seconds(human_time):
@@ -164,10 +163,22 @@ class Plug:
 
 
 if __name__ == '__main__':
+    last_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)
     target_date = None
+    plugs = get_plugs()
+    hourly_prices = []
 
     while True:
+        current_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)
+        if current_config_mtime != last_config_mtime:
+            logging.info(f"{CONFIG_FILE_PATH} changed, recalculating prices...")
+            last_config_mtime = current_config_mtime
+            config.read(CONFIG_FILE_PATH)
+            provider = PROVIDERS[config.get('settings', 'provider')]()
+            target_date = None  # Force reloading prices
+
         if target_date is None or target_date.date() != datetime.now().date():
+            plugs = get_plugs()
             target_date = datetime.now()
             current_date = target_date.strftime("%Y%m%d")
             current_date_on_file = target_date.strftime("%Y;%m;%d")
@@ -180,7 +191,7 @@ if __name__ == '__main__':
             for hour, price in hourly_prices:
                 email_message += f"⏱️💶 {hour}h: {price} €/kWh<br>"
 
-            for plug in get_plugs():
+            for plug in plugs:
                 plug.calculate_target_hours(hourly_prices)
 
                 email_message += "<p>"
@@ -222,7 +233,7 @@ if __name__ == '__main__':
             )
             logging.info(f"Successfully downloaded prices data for {target_date.date()} and sent email.")
         else:
-            for plug in get_plugs():
+            for plug in plugs:
                 try:
                     runtime = plug.runtime_seconds()
                     if runtime > 0:
