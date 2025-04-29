@@ -28,6 +28,8 @@ COPY --from=build-frontend /app/client/dist ./client/dist
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+RUN adduser --disabled-password appuser && chown -R appuser /app /entrypoint.sh
+USER appuser
 ENTRYPOINT ["/entrypoint.sh"]
 
 EXPOSE 8000

@@ -106,17 +106,12 @@ address                   = 192.168.1.12
 
 We provide a combined Docker image serving both API and UI on port 8000:
 
-1. Build & run (uses `docker-compose.yml`):
+1. Run the startup script provided (`run.sh`) which takes your timezone, config path, host username and group name, resolves their UID/GID, and then exports them so the container user matches and can read the bind-mounted config directory:
    ```bash
-   # optionally set a custom config file path
-   export CONFIG_PATH=/path/to/config.properties
-   
-   # Set timezone
-   export TZ=Europe/Madrid
-
-   # build & start
-   docker-compose up -d --build
+   chmod +x run.sh
+   ./run.sh Europe/Madrid /path/to/config username group
    ```
+
 2. Access the app:
    - Web UI & API root: http://localhost:8000
    - Example API endpoint: http://localhost:8000/api/plugs

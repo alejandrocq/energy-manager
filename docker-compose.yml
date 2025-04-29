@@ -11,4 +11,5 @@ services:
       - "${CONFIG_PATH:-./config/}:/app/config/:ro"
     ports:
       - "8000:8000"
+    user: "${UID}:${GID}"
     restart: unless-stopped
