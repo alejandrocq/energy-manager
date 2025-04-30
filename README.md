@@ -13,6 +13,10 @@ Includes a FastAPI backend and a Vite+React frontend with live plug control and 
 - 🌐 REST API to list plugs, toggle on/off, view active countdown
 - 📊 React UI with interactive plug details and hourly energy usage chart
 
+## ⚠️ Security Disclaimer
+
+This application does not provide built-in authentication for the moment. It is expected to be deployed in a protected network or fronted by a reverse proxy that implements authentication (Basic Auth, OAuth2...) to control access.
+
 ## 🛠️ Prerequisites
 
 - Python 3.9+  
