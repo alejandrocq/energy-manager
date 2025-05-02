@@ -29,6 +29,8 @@ tapo_password = config.get('credentials', 'tapo_password')
 
 provider = PROVIDERS[config.get('settings', 'provider')]()
 
+plugs = []
+
 
 def human_time_to_seconds(human_time):
     match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
@@ -80,7 +82,7 @@ def get_plugs():
 
 
 def get_plug_energy(address):
-    p = next(x for x in get_plugs() if x.address == address)
+    p : Plug = next(x for x in plugs if x.address == address)
     return p.get_hourly_energy()
 
 
@@ -160,7 +162,6 @@ class Plug:
             kwh = val / 1000
             out.append({'hour': hr, 'value': kwh})
         return out
-
 
 if __name__ == '__main__':
     last_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)

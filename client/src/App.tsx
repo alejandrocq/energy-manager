@@ -22,11 +22,20 @@ ChartJS.register(
     Legend
 )
 
+interface Period {
+    start_hour: number
+    end_hour: number
+    runtime_human: string
+    target_hour: number | null
+    target_price: number | null
+}
+
 interface Plug {
     name: string
     address: string
     is_on: boolean | null
     timer_remaining: number | null
+    periods: Period[]
 }
 
 interface DataPoint {
@@ -98,55 +107,67 @@ const App: React.FC = () => {
 
     return (
         <div className="app-container">
-            <h1>Energy Manager</h1>
+            <h1>⚡️ Energy Manager</h1>
             <ul className="plug-list">
                 {plugs.map(p => (
                     <li key={p.address} className="plug-item">
                         <div className="plug-header" onClick={() => expand(p.address)}>
                             <span className="plug-icon">🔌</span>
                             <span className="plug-name">{p.name}</span>
-                            {p.is_on != null && (
-                                <span className="status-label">
-                  {p.is_on ? '🟢 On' : '🔴 Off'}
-                </span>
-                            )}
                             {p.timer_remaining != null && (
                                 <span className="timer-label">⏳ {fmtTime(p.timer_remaining)}</span>
                             )}
-                            <button
-                                className="plug-toggle-btn"
-                                onClick={e => {
-                                    e.stopPropagation()
-                                    togglePlug(p)
-                                }}
-                            >
-                                {p.is_on ? 'Turn Off' : 'Turn On'}
+                            <button className={`plug-toggle-btn ${p.is_on ? 'on' : 'off'}`}
+                                    onClick={e => {
+                                        e.stopPropagation()
+                                        togglePlug(p)
+                                    }}>
+                                {p.is_on ? 'On' : 'Off'}
                             </button>
                         </div>
                         {open === p.address && energyData[p.address] && (
-                            <div className="chart-container">
-                                <Line
-                                    data={{
-                                        labels: energyData[p.address].map(pt => pt.hour.toString()),
-                                        datasets: [
-                                            {
-                                                label: 'Energy (kWh)',
-                                                data: energyData[p.address].map(pt => pt.value),
-                                                borderColor: '#007acc',
-                                                backgroundColor: 'rgba(0,122,204,0.2)'
+                            <>
+                                <div className="plug-details">
+                                    <p><strong>Address:</strong> {p.address}</p>
+                                    {p.periods.length > 0 && (
+                                        <>
+                                            <p><strong>Periods:</strong></p>
+                                            <ul className="period-list">
+                                                {p.periods.map((period, idx) => (
+                                                    <li key={idx} className="period-item">
+                                                        {period.start_hour}:00 - {period.end_hour}:00 | Runtime {period.runtime_human} |
+                                                        Target {period.target_hour}:00 ({period.target_price} €/kWh)
+                                                    </li>
+                                                ))
+                                                }
+                                            </ul>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="chart-container">
+                                    <Line
+                                        data={{
+                                            labels: energyData[p.address].map(pt => pt.hour.toString()),
+                                            datasets: [
+                                                {
+                                                    label: 'Energy (kWh)',
+                                                    data: energyData[p.address].map(pt => pt.value),
+                                                    borderColor: '#007acc',
+                                                    backgroundColor: 'rgba(0,122,204,0.2)'
+                                                }
+                                            ]
+                                        }}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: {
+                                                legend: {position: 'top'},
+                                                title: {display: true, text: 'Hourly Energy Usage'}
                                             }
-                                        ]
-                                    }}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: {
-                                            legend: {position: 'top'},
-                                            title: {display: true, text: 'Hourly Energy Usage'}
-                                        }
-                                    }}
-                                />
-                            </div>
+                                        }}
+                                    />
+                                </div>
+                            </>
                         )}
                     </li>
                 ))}
@@ -174,7 +195,7 @@ const App: React.FC = () => {
                             title: {display: true, text: 'Electricity Prices Today'}
                         },
                         scales: {
-                            y: { beginAtZero: true }
+                            y: {beginAtZero: true}
                         }
                     }}
                 />

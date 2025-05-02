@@ -15,13 +15,30 @@ app.add_middleware(
 @app.get('/api/plugs')
 async def plugs():
     out = []
-    for p in em.get_plugs():
+    for p in em.plugs:
         try:
             st = p.tapo.get_status()
         except:
             st = None
+
         tr = p.get_rule_remain_seconds()
-        out.append({'name':p.name,'address':p.address,'is_on':st,'timer_remaining':tr})
+
+        out.append({
+            'name': p.name,
+            'address': p.address,
+            'is_on': st,
+            'timer_remaining': tr,
+            'periods': [
+                {
+                    'start_hour': per['start_hour'],
+                    'end_hour': per['end_hour'],
+                    'runtime_human': per['runtime_human'],
+                    'target_hour': per['target'][0] if per.get('target') else None,
+                    'target_price': per['target'][1] if per.get('target') else None,
+                }
+                for per in p.periods
+            ]
+        })
     return out
 
 @app.get('/api/plugs/{address}/energy')

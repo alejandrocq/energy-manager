@@ -1,7 +1,7 @@
 .app-container {
     max-width: 800px;
-    margin: 40px auto;
-    padding: 20px;
+    margin: 20px auto;
+    padding: 16px;
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
@@ -9,7 +9,6 @@
 
 .app-container h1 {
     text-align: center;
-    color: #007acc;
     margin-bottom: 24px;
 }
 
@@ -22,6 +21,7 @@
     margin-bottom: 16px;
     border: 1px solid #eee;
     border-radius: 6px;
+    overflow: hidden;
 }
 
 .plug-header {
@@ -47,27 +47,45 @@
     font-weight: 500;
 }
 
-.status-label {
-    margin-right: 12px;
-}
-
 .timer-label {
     margin-right: 12px;
 }
 
 .plug-toggle-btn {
+    min-width: 60px;
     padding: 6px 12px;
     font-size: 0.9rem;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    background: #007acc;
     color: #fff;
     transition: background 0.2s;
 }
-
+.plug-toggle-btn.on {
+    background: #28a745;
+}
+.plug-toggle-btn.off {
+    background: #dc3545;
+}
 .plug-toggle-btn:hover {
     background: #005fa3;
+}
+
+.plug-details {
+    padding: 12px;
+    background: #fafafa;
+    border-top: 1px solid #eee;
+    font-size: 0.9rem;
+}
+
+.period-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.period-item {
+    font-size: 0.9rem;
 }
 
 .chart-container {
@@ -78,4 +96,41 @@
 
 .price-chart {
     text-align: center;
+}
+
+@media (max-width: 600px) {
+    .plug-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    .plug-icon {
+        font-size: 2.5rem;
+        margin-bottom: 8px;
+        margin-right: 0;
+    }
+    .plug-name {
+        flex: none;
+        margin-bottom: 8px;
+    }
+    .timer-label {
+        margin: 8px 0;
+    }
+    .plug-toggle-btn {
+        margin-top: 8px;
+        width: 100%;
+        text-align: center;
+    }
+    .plug-details {
+        padding: 12px;
+        background: #fafafa;
+        border-top: 1px solid #eee;
+        font-size: 0.85rem;
+    }
+    .period-item {
+        font-size: 0.85rem;
+    }
+    .chart-container {
+        height: 300px;
+    }
 }
