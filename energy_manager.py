@@ -29,8 +29,6 @@ tapo_password = config.get('credentials', 'tapo_password')
 
 provider = PROVIDERS[config.get('settings', 'provider')]()
 
-plugs = []
-
 
 def human_time_to_seconds(human_time):
     match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
@@ -76,7 +74,7 @@ def toggle_plug_enabled(address: str):
         if section.startswith("plug") and config[section].get('address') == address:
             current = config.getboolean(section, 'enabled', fallback=True)
 
-            for plug in plugs:
+            for plug in get_plugs():
                 if plug.address == address:
                     plug.tapo.turnOff()
                     break
@@ -91,15 +89,15 @@ def toggle_plug_enabled(address: str):
 def get_plugs():
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE_PATH)
-    plugs = []
+    out = []
     for section in config.sections():
-        if section.startswith("plug") and config[section].getboolean('enabled'):
-            plugs.append(Plug(config[section], tapo_email, tapo_password))
-    return plugs
+        if section.startswith("plug"):
+            out.append(Plug(config[section], tapo_email, tapo_password))
+    return out
 
 
 def get_plug_energy(address):
-    p: Plug = next(x for x in plugs if x.address == address)
+    p: Plug = next(x for x in get_plugs() if x.address == address)
     return p.get_hourly_energy()
 
 
@@ -107,6 +105,7 @@ class Plug:
     def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str):
         self.name = plug_config.get('name')
         self.address = plug_config.get('address')
+        self.enabled = plug_config.getboolean('enabled', fallback=False)
         self.tapo = PyP100.Switchable(self.address, email, password)
 
         periods_temp = {}

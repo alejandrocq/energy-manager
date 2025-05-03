@@ -15,7 +15,7 @@ app.add_middleware(
 @app.get('/api/plugs')
 async def plugs():
     out = []
-    for p in em.plugs:
+    for p in em.get_plugs():
         try:
             st = p.tapo.get_status()
         except:
@@ -26,6 +26,7 @@ async def plugs():
         out.append({
             'name': p.name,
             'address': p.address,
+            'enabled': p.enabled,
             'is_on': st,
             'timer_remaining': tr,
             'periods': [
