@@ -71,6 +71,23 @@ def send_email(subject, content, from_email, to_email, attach_chart=False):
         logging.error(f"Failed to send email: {err}")
 
 
+def toggle_plug_enabled(address: str):
+    for section in config.sections():
+        if section.startswith("plug") and config[section].get('address') == address:
+            current = config.getboolean(section, 'enabled', fallback=True)
+
+            for plug in plugs:
+                if plug.address == address:
+                    plug.tapo.turnOff()
+                    break
+
+            config.set(section, 'enabled', str(not current).lower())
+            with open(CONFIG_FILE_PATH, 'w') as configfile:
+                config.write(configfile)
+            return
+    raise ValueError("Plug not found")
+
+
 def get_plugs():
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE_PATH)
@@ -82,7 +99,7 @@ def get_plugs():
 
 
 def get_plug_energy(address):
-    p : Plug = next(x for x in plugs if x.address == address)
+    p: Plug = next(x for x in plugs if x.address == address)
     return p.get_hourly_energy()
 
 
@@ -162,6 +179,7 @@ class Plug:
             kwh = val / 1000
             out.append({'hour': hr, 'value': kwh})
         return out
+
 
 if __name__ == '__main__':
     last_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)

@@ -31,6 +31,7 @@ interface Period {
 }
 
 interface Plug {
+    enabled: boolean
     name: string
     address: string
     is_on: boolean | null
@@ -110,20 +111,33 @@ const App: React.FC = () => {
             <h1>⚡️ Energy Manager</h1>
             <ul className="plug-list">
                 {plugs.map(p => (
-                    <li key={p.address} className="plug-item">
+                    <li key={p.address} className={`plug-item ${p.enabled ? '' : 'disabled'}`}>
                         <div className="plug-header" onClick={() => expand(p.address)}>
                             <span className="plug-icon">🔌</span>
                             <span className="plug-name">{p.name}</span>
                             {p.timer_remaining != null && (
                                 <span className="timer-label">⏳ {fmtTime(p.timer_remaining)}</span>
                             )}
-                            <button className={`plug-toggle-btn ${p.is_on ? 'on' : 'off'}`}
+                            <button
+                                className={`enable-disable-btn`}
+                                onClick={e => {
+                                    e.stopPropagation();
+                                    fetch(`${API}/plugs/${p.address}/toggle_enable`, {
+                                        method: 'POST'
+                                    }).then(fetchPlugs);
+                                }}>
+                                {p.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            {p.enabled && (
+                                <button
+                                    className={`plug-toggle-btn ${p.is_on ? 'on' : 'off'}`}
                                     onClick={e => {
                                         e.stopPropagation()
                                         togglePlug(p)
                                     }}>
-                                {p.is_on ? 'On' : 'Off'}
-                            </button>
+                                    {p.is_on ? 'On' : 'Off'}
+                                </button>
+                            )}
                         </div>
                         {open === p.address && energyData[p.address] && (
                             <>

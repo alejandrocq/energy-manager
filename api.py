@@ -48,7 +48,16 @@ async def plug_energy(address: str):
     except StopIteration:
         raise HTTPException(404,'not found')
 
-@app.post('/api/plugs/{address}/on')
+@app.post('/api/plugs/{address}/toggle_enable')
+async def toggle_enable(address: str):
+    try:
+        em.toggle_plug_enabled(address)
+        return {'status': 'success'}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 async def plug_on(address: str):
     for p in em.get_plugs():
         if p.address==address:

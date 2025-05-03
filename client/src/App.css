@@ -23,6 +23,11 @@
     border-radius: 6px;
     overflow: hidden;
 }
+.plug-item.disabled {
+    opacity: 0.6;
+    background: #f8f9fa;
+    border-color: #e9ecef;
+}
 
 .plug-header {
     display: flex;
@@ -51,9 +56,27 @@
     margin-right: 12px;
 }
 
+.enable-disable-btn {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    color: white;
+    border-radius: 4px;
+    padding: 8px 16px;
+    margin: 0 4px 0 4px;
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(0,123,255,0.6);
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+.enable-disable-btn:hover {
+    background: linear-gradient(45deg, #0056b3, #003d80);
+    box-shadow: 0 4px 8px rgba(0,86,179,0.8);
+}
+
 .plug-toggle-btn {
     min-width: 60px;
     padding: 6px 12px;
+    margin: 0 4px 0 4px;
     font-size: 0.9rem;
     border: none;
     border-radius: 4px;
@@ -63,9 +86,23 @@
 }
 .plug-toggle-btn.on {
     background: #28a745;
+    box-shadow: 0 4px 6px rgba(40, 167, 69, 0.4);
+    border: 1px solid #28a745;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+.plug-toggle-btn.on:hover {
+    background: #218838;
+    box-shadow: 0 6px 12px rgba(33, 136, 56, 0.6);
 }
 .plug-toggle-btn.off {
     background: #dc3545;
+    box-shadow: 0 4px 6px rgba(220, 53, 69, 0.4);
+    border: 1px solid #dc3545;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+.plug-toggle-btn.off:hover {
+    background: #c82333;
+    box-shadow: 0 6px 12px rgba(200, 35, 51, 0.6);
 }
 .plug-toggle-btn:hover {
     background: #005fa3;
@@ -117,9 +154,13 @@
         margin: 8px 0;
     }
     .plug-toggle-btn {
-        margin-top: 8px;
+        margin: 8px 0;
         width: 100%;
         text-align: center;
+    }
+    .enable-disable-btn {
+        width: 100%;
+        margin: 8px 0;
     }
     .plug-details {
         padding: 12px;
