@@ -60,6 +60,8 @@ const App: React.FC = () => {
     const [open, setOpen] = useState<string | null>(null)
     const [energyData, setEnergyData] = useState<Record<string, DataPoint[]>>({})
     const [prices, setPrices] = useState<DataPoint[]>([])
+    const [loading, setLoading] = useState<boolean>(false)
+    const [pendingOperations, setPendingOperations] = useState<Record<string, boolean>>({})
 
     const fetchPlugs = async () => {
         const res = await fetch(`${API}/plugs`)
@@ -78,8 +80,10 @@ const App: React.FC = () => {
     }
 
     useEffect(() => {
-        fetchPlugs()
-        fetchPrices()
+        setLoading(true)
+        Promise.all([fetchPlugs(), fetchPrices()])
+            .finally(() => setLoading(false))
+
         const interval = setInterval(() => {
             fetchPlugs()
         }, 10000)
@@ -95,15 +99,43 @@ const App: React.FC = () => {
     }
 
     const togglePlug = async (plug: Plug) => {
-        if (!plug.is_on) {
-            await fetch(`${API}/plugs/${plug.address}/on`, {method: 'POST'})
-        } else {
-            await fetch(`${API}/plugs/${plug.address}/off`, {method: 'POST'})
+        const operationKey = `toggle-${plug.address}`
+        try {
+            setPendingOperations(prev => ({ ...prev, [operationKey]: true }))
+
+            if (!plug.is_on) {
+                await fetch(`${API}/plugs/${plug.address}/on`, {method: 'POST'})
+            } else {
+                await fetch(`${API}/plugs/${plug.address}/off`, {method: 'POST'})
+            }
+            await fetchPlugs()
+            if (open === plug.address) {
+                await fetchEnergy(plug.address)
+            }
+        } finally {
+            setPendingOperations(prev => ({ ...prev, [operationKey]: false }))
         }
-        await fetchPlugs()
-        if (open === plug.address) {
-            await fetchEnergy(plug.address)
+    }
+
+    const toggleEnable = async (address: string, e: React.MouseEvent) => {
+        e.stopPropagation()
+        const operationKey = `enable-${address}`
+        try {
+            setPendingOperations(prev => ({ ...prev, [operationKey]: true }))
+            await fetch(`${API}/plugs/${address}/toggle_enable`, { method: 'POST' })
+            await fetchPlugs()
+        } finally {
+            setPendingOperations(prev => ({ ...prev, [operationKey]: false }))
         }
+    }
+
+    if (loading) {
+        return (
+            <div className="app-container loading-container">
+                <div className="spinner"></div>
+                <p>Loading...</p>
+            </div>
+        )
     }
 
     return (
@@ -120,22 +152,23 @@ const App: React.FC = () => {
                             )}
                             <button
                                 className={`enable-disable-btn`}
-                                onClick={e => {
-                                    e.stopPropagation();
-                                    fetch(`${API}/plugs/${p.address}/toggle_enable`, {
-                                        method: 'POST'
-                                    }).then(fetchPlugs);
-                                }}>
-                                {p.enabled ? 'Disable' : 'Enable'}
+                                disabled={pendingOperations[`enable-${p.address}`]}
+                                onClick={(e) => toggleEnable(p.address, e)}>
+                                {pendingOperations[`enable-${p.address}`] ?
+                                    <span className="spinner-small"></span> :
+                                    p.enabled ? 'Disable' : 'Enable'}
                             </button>
                             {p.enabled && (
                                 <button
                                     className={`plug-toggle-btn ${p.is_on ? 'on' : 'off'}`}
+                                    disabled={pendingOperations[`toggle-${p.address}`]}
                                     onClick={e => {
                                         e.stopPropagation()
                                         togglePlug(p)
                                     }}>
-                                    {p.is_on ? 'On' : 'Off'}
+                                    {pendingOperations[`toggle-${p.address}`] ?
+                                        <span className="spinner-small"></span> :
+                                        p.is_on ? 'On' : 'Off'}
                                 </button>
                             )}
                         </div>
