@@ -1,10 +1,13 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+import energy_manager as em
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import energy_manager as em
 
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -12,14 +15,23 @@ app.add_middleware(
     allow_headers=['*']
 )
 
+executor = ThreadPoolExecutor(max_workers=10)
+
+
+async def run_in_threadpool(func, *args, **kwargs):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(executor, lambda: func(*args, **kwargs))
+
+
 @app.get('/api/plugs')
 async def plugs():
     out = []
     for p in em.get_plugs():
         try:
-            st = p.tapo.get_status()
-            tr = p.get_rule_remain_seconds()
-            p.calculate_target_hours(em.get_provider().get_prices(datetime.now()))
+            st = await run_in_threadpool(p.tapo.get_status)
+            tr = await run_in_threadpool(p.get_rule_remain_seconds)
+            prices = await run_in_threadpool(em.get_provider().get_prices, datetime.now())
+            p.calculate_target_hours(prices)
         except:
             st = None
             tr = None
@@ -43,46 +55,53 @@ async def plugs():
         })
     return out
 
+
 @app.get('/api/plugs/{address}/energy')
 async def plug_energy(address: str):
     try:
-        return em.get_plug_energy(address)
+        return await run_in_threadpool(em.get_plug_energy, address)
     except StopIteration:
-        raise HTTPException(404,'not found')
+        raise HTTPException(404, 'not found')
+
 
 @app.post('/api/plugs/{address}/toggle_enable')
 async def toggle_enable(address: str):
     try:
-        em.toggle_plug_enabled(address)
+        await run_in_threadpool(em.toggle_plug_enabled, address)
         return {'status': 'success'}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post('/api/plugs/{address}/on')
 async def plug_on(address: str):
     for p in em.get_plugs():
-        if p.address==address:
-            p.tapo.turnOn()
-            return {'address':address,'turned_on':True}
-    raise HTTPException(404,'not found')
+        if p.address == address:
+            await run_in_threadpool(p.tapo.turnOn)
+            return {'address': address, 'turned_on': True}
+    raise HTTPException(404, 'not found')
+
 
 @app.post('/api/plugs/{address}/off')
 async def plug_off(address: str):
     for p in em.get_plugs():
-        if p.address==address:
-            p.tapo.turnOff()
-            return {'address':address,'turned_off':True}
-    raise HTTPException(404,'not found')
+        if p.address == address:
+            await run_in_threadpool(p.tapo.turnOff)
+            return {'address': address, 'turned_off': True}
+    raise HTTPException(404, 'not found')
+
 
 @app.get('/api/prices')
 async def get_prices():
-    data = em.get_provider().get_prices(datetime.now())
+    data = await run_in_threadpool(em.get_provider().get_prices, datetime.now())
     return [{'hour': h, 'value': p} for h, p in data]
+
 
 app.mount("/", StaticFiles(directory="client/dist", html=True, check_dir=False), name="client")
 
-if __name__=='__main__':
+if __name__ == '__main__':
     import uvicorn
-    uvicorn.run('api:app',host='0.0.0.0',port=8000,reload=True)
+
+    uvicorn.run('api:app', host='0.0.0.0', port=8000, reload=True)
