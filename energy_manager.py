@@ -19,15 +19,6 @@ CHART_FILE_NAME = "prices_chart.png"
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 config = configparser.ConfigParser()
-config.read(CONFIG_FILE_PATH)
-
-manager_from_email = config.get('email', 'from_email')
-manager_to_email = config.get('email', 'to_email')
-
-tapo_email = config.get('credentials', 'tapo_email')
-tapo_password = config.get('credentials', 'tapo_password')
-
-provider = PROVIDERS[config.get('settings', 'provider')]()
 
 
 def human_time_to_seconds(human_time):
@@ -86,14 +77,20 @@ def toggle_plug_enabled(address: str):
     raise ValueError("Plug not found")
 
 
-def get_plugs():
-    config = configparser.ConfigParser()
+def get_plugs(enabled_only=False):
     config.read(CONFIG_FILE_PATH)
+    tapo_email = config.get('credentials', 'tapo_email')
+    tapo_password = config.get('credentials', 'tapo_password')
     out = []
     for section in config.sections():
-        if section.startswith("plug"):
+        if section.startswith("plug") and (not enabled_only or config.getboolean(section, 'enabled', fallback=False)):
             out.append(Plug(config[section], tapo_email, tapo_password))
     return out
+
+
+def get_provider():
+    config.read(CONFIG_FILE_PATH)
+    return PROVIDERS[config.get('settings', 'provider')]()
 
 
 def get_plug_energy(address):
@@ -181,10 +178,13 @@ class Plug:
 
 
 if __name__ == '__main__':
-    last_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)
+    last_config_mtime = None
     target_date = None
-    plugs = get_plugs()
-    hourly_prices = []
+
+    manager_from_email = None
+    manager_to_email = None
+    provider = None
+    plugs = []
 
     while True:
         current_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)
@@ -192,11 +192,13 @@ if __name__ == '__main__':
             logging.info(f"{CONFIG_FILE_PATH} changed, recalculating prices...")
             last_config_mtime = current_config_mtime
             config.read(CONFIG_FILE_PATH)
-            provider = PROVIDERS[config.get('settings', 'provider')]()
+            manager_from_email = config.get('email', 'from_email')
+            manager_to_email = config.get('email', 'to_email')
+            provider = get_provider()
+            plugs = get_plugs(True)
             target_date = None  # Force reloading prices
 
         if target_date is None or target_date.date() != datetime.now().date():
-            plugs = get_plugs()
             target_date = datetime.now()
             current_date = target_date.strftime("%Y%m%d")
             current_date_on_file = target_date.strftime("%Y;%m;%d")

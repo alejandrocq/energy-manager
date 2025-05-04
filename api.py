@@ -18,10 +18,11 @@ async def plugs():
     for p in em.get_plugs():
         try:
             st = p.tapo.get_status()
+            tr = p.get_rule_remain_seconds()
+            p.calculate_target_hours(em.get_provider().get_prices(datetime.now()))
         except:
             st = None
-
-        tr = p.get_rule_remain_seconds()
+            tr = None
 
         out.append({
             'name': p.name,
@@ -59,6 +60,7 @@ async def toggle_enable(address: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post('/api/plugs/{address}/on')
 async def plug_on(address: str):
     for p in em.get_plugs():
         if p.address==address:
@@ -76,7 +78,7 @@ async def plug_off(address: str):
 
 @app.get('/api/prices')
 async def get_prices():
-    data = em.provider.get_prices(datetime.now())
+    data = em.get_provider().get_prices(datetime.now())
     return [{'hour': h, 'value': p} for h, p in data]
 
 app.mount("/", StaticFiles(directory="client/dist", html=True, check_dir=False), name="client")
