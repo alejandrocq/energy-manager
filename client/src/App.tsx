@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react'
+import React, {useCallback, useEffect, useState, useMemo, memo} from 'react'
 import './App.css'
 import {CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, Title, Tooltip} from 'chart.js'
 import {Line} from 'react-chartjs-2'
@@ -13,10 +13,11 @@ ChartJS.register(
     Legend
 )
 
-// Toast notification types
+type ToastType = 'success' | 'error'
+
 interface Toast {
     id: string;
-    type: 'success' | 'error';
+    type: ToastType;
     message: string;
     duration?: number;
 }
@@ -54,6 +55,54 @@ const fmtTime = (sec: number): string => {
         .padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
+const ToastNotification = memo(({ toast, onDismiss }: { toast: Toast, onDismiss: (id: string) => void }) => {
+    return (
+        <div className={`toast ${toast.type}`}>
+            <div className="toast-message">{toast.message}</div>
+            <button className="toast-close" onClick={() => onDismiss(toast.id)}>✕</button>
+        </div>
+    );
+});
+
+const useToasts = () => {
+    const [toasts, setToasts] = useState<Toast[]>([]);
+
+    const showToast = useCallback((type: ToastType, message: string, duration = 3000) => {
+        const id = 'toast-' + Date.now();
+        const toast: Toast = {id, type, message, duration};
+
+        setToasts(prevToasts => [...prevToasts, toast]);
+
+        if (duration > 0) {
+            setTimeout(() => {
+                dismissToast(id);
+            }, duration);
+        }
+
+        return id;
+    }, []);
+
+    const dismissToast = useCallback((id: string) => {
+        setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
+    }, []);
+
+    const ToastContainer = useMemo(() => {
+        return (
+            <div className="toast-container">
+                {toasts.map(toast => (
+                    <ToastNotification
+                        key={toast.id}
+                        toast={toast}
+                        onDismiss={dismissToast}
+                    />
+                ))}
+            </div>
+        );
+    }, [toasts, dismissToast]);
+
+    return { showToast, ToastContainer };
+};
+
 const App: React.FC = () => {
     const [plugs, setPlugs] = useState<Plug[]>([])
     const [open, setOpen] = useState<string | null>(null)
@@ -61,7 +110,8 @@ const App: React.FC = () => {
     const [prices, setPrices] = useState<DataPoint[]>([])
     const [loading, setLoading] = useState<boolean>(false)
     const [pendingOperations, setPendingOperations] = useState<Record<string, boolean>>({})
-    const [toasts, setToasts] = useState<Toast[]>([])
+
+    const { showToast, ToastContainer } = useToasts();
 
     const fetchPlugs = async () => {
         const res = await fetch(`${API}/plugs`)
@@ -147,33 +197,6 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }
 
-    const ToastNotification: React.FC<{ toast: Toast, onDismiss: (id: string) => void }> = ({toast, onDismiss}) => {
-        return (
-            <div className={`toast ${toast.type}`}>
-                <div className="toast-message">{toast.message}</div>
-                <button className="toast-close" onClick={() => onDismiss(toast.id)}>✕</button>
-            </div>
-        );
-    };
-
-    const showToast = useCallback((type: 'success' | 'error', message: string, duration = 3000) => {
-        const id = Math.random().toString(36).substring(2, 9);
-        const toast = {id, type, message, duration};
-        setToasts(prevToasts => [...prevToasts, toast]);
-
-        if (duration > 0) {
-            setTimeout(() => {
-                dismissToast(id);
-            }, duration);
-        }
-
-        return id;
-    }, []);
-
-    const dismissToast = useCallback((id: string) => {
-        setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
-    }, []);
-
     if (loading) {
         return (
             <div className="app-container loading-container">
@@ -185,16 +208,7 @@ const App: React.FC = () => {
 
     return (
         <div className="app-container">
-            {/* Toast Container */}
-            <div className="toast-container">
-                {toasts.map(toast => (
-                    <ToastNotification
-                        key={toast.id}
-                        toast={toast}
-                        onDismiss={dismissToast}
-                    />
-                ))}
-            </div>
+            {ToastContainer}
 
             <h1>⚡️ Energy Manager</h1>
             <ul className="plug-list">
