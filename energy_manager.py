@@ -90,7 +90,7 @@ def get_plugs(enabled_only=False):
 
 def get_provider():
     config.read(CONFIG_FILE_PATH)
-    return PROVIDERS[config.get('settings', 'provider')]()
+    return PROVIDERS[config.get('settings', 'provider')]
 
 
 def get_plug_energy(address):

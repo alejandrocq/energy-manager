@@ -13,7 +13,7 @@ def cached_prices(func):
     def wrapper(self, target_date: datetime, *args, **kwargs):
         cache_key = f"{target_date.strftime('%Y%m%d')}"
 
-        if not hasattr(self, '_price_cache'):
+        if not hasattr(self, '_prices_cache'):
             self._prices_cache = {}
 
         if cache_key in self._prices_cache:
@@ -67,5 +67,5 @@ class OmieProvider(PricesProvider):
 
 
 PROVIDERS = {
-    "omie": OmieProvider,
+    "omie": OmieProvider(),
 }
