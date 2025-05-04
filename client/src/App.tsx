@@ -1,15 +1,6 @@
-import React, {useEffect, useState} from 'react'
+import React, {useCallback, useEffect, useState} from 'react'
 import './App.css'
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend
-} from 'chart.js'
+import {CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, Title, Tooltip} from 'chart.js'
 import {Line} from 'react-chartjs-2'
 
 ChartJS.register(
@@ -21,6 +12,14 @@ ChartJS.register(
     Tooltip,
     Legend
 )
+
+// Toast notification types
+interface Toast {
+    id: string;
+    type: 'success' | 'error';
+    message: string;
+    duration?: number;
+}
 
 interface Period {
     start_hour: number
@@ -62,21 +61,27 @@ const App: React.FC = () => {
     const [prices, setPrices] = useState<DataPoint[]>([])
     const [loading, setLoading] = useState<boolean>(false)
     const [pendingOperations, setPendingOperations] = useState<Record<string, boolean>>({})
+    const [toasts, setToasts] = useState<Toast[]>([])
 
     const fetchPlugs = async () => {
         const res = await fetch(`${API}/plugs`)
-        setPlugs(await res.json())
+        if (!res.ok) showToast('error', 'Failed to fetch plugs')
+        else setPlugs(await res.json())
     }
 
     const fetchEnergy = async (addr: string) => {
         const res = await fetch(`${API}/plugs/${addr}/energy`)
-        const data = await res.json()
-        setEnergyData(ed => ({...ed, [addr]: data}))
+        if (!res.ok) showToast('error', `Failed to fetch energy data for ${addr}`)
+        else {
+            let data = await res.json()
+            setEnergyData(ed => ({...ed, [addr]: data}))
+        }
     }
 
     const fetchPrices = async () => {
         const res = await fetch(`${API}/prices`)
-        setPrices(await res.json())
+        if (!res.ok) showToast('error', 'Failed to fetch prices data')
+        else setPrices(await res.json())
     }
 
     useEffect(() => {
@@ -100,34 +105,74 @@ const App: React.FC = () => {
 
     const togglePlug = async (plug: Plug) => {
         const operationKey = `toggle-${plug.address}`
-        try {
-            setPendingOperations(prev => ({ ...prev, [operationKey]: true }))
+        setPendingOperations(prev => ({...prev, [operationKey]: true}))
 
-            if (!plug.is_on) {
-                await fetch(`${API}/plugs/${plug.address}/on`, {method: 'POST'})
-            } else {
-                await fetch(`${API}/plugs/${plug.address}/off`, {method: 'POST'})
-            }
-            await fetchPlugs()
-            if (open === plug.address) {
-                await fetchEnergy(plug.address)
-            }
-        } finally {
-            setPendingOperations(prev => ({ ...prev, [operationKey]: false }))
+        let response;
+        if (!plug.is_on) {
+            response = await fetch(`${API}/plugs/${plug.address}/on`, {method: 'POST'})
+        } else {
+            response = await fetch(`${API}/plugs/${plug.address}/off`, {method: 'POST'})
         }
+
+        let action = plug.is_on ? 'OFF' : 'ON'
+
+        if (response.ok) {
+            showToast('success', `${plug.name}: Turned ${action} successfully`)
+            await fetchPlugs()
+            if (open === plug.address) await fetchEnergy(plug.address)
+        } else {
+            showToast('error', `${plug.name}: Failed to turn ${action}`)
+        }
+
+        setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }
 
     const toggleEnable = async (address: string, e: React.MouseEvent) => {
         e.stopPropagation()
         const operationKey = `enable-${address}`
-        try {
-            setPendingOperations(prev => ({ ...prev, [operationKey]: true }))
-            await fetch(`${API}/plugs/${address}/toggle_enable`, { method: 'POST' })
+        const plug = plugs.find(p => p.address === address)
+
+        setPendingOperations(prev => ({...prev, [operationKey]: true}))
+
+        const action = plug?.enabled ? 'disabled' : 'enabled'
+        let response = await fetch(`${API}/plugs/${address}/toggle_enable`, {method: 'POST'})
+
+        if (response.ok) {
+            showToast('success', `${plug?.name}: ${action} successfully`)
             await fetchPlugs()
-        } finally {
-            setPendingOperations(prev => ({ ...prev, [operationKey]: false }))
+        } else {
+            showToast('error', `${plug?.name}: Could not be ${action}`)
         }
+
+        setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }
+
+    const ToastNotification: React.FC<{ toast: Toast, onDismiss: (id: string) => void }> = ({toast, onDismiss}) => {
+        return (
+            <div className={`toast ${toast.type}`}>
+                <div className="toast-message">{toast.message}</div>
+                <button className="toast-close" onClick={() => onDismiss(toast.id)}>✕</button>
+            </div>
+        );
+    };
+
+    const showToast = useCallback((type: 'success' | 'error', message: string, duration = 3000) => {
+        const id = Math.random().toString(36).substring(2, 9);
+        const toast = {id, type, message, duration};
+        setToasts(prevToasts => [...prevToasts, toast]);
+
+        if (duration > 0) {
+            setTimeout(() => {
+                dismissToast(id);
+            }, duration);
+        }
+
+        return id;
+    }, []);
+
+    const dismissToast = useCallback((id: string) => {
+        setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
+    }, []);
 
     if (loading) {
         return (
@@ -140,6 +185,17 @@ const App: React.FC = () => {
 
     return (
         <div className="app-container">
+            {/* Toast Container */}
+            <div className="toast-container">
+                {toasts.map(toast => (
+                    <ToastNotification
+                        key={toast.id}
+                        toast={toast}
+                        onDismiss={dismissToast}
+                    />
+                ))}
+            </div>
+
             <h1>⚡️ Energy Manager</h1>
             <ul className="plug-list">
                 {plugs.map(p => (
