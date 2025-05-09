@@ -5,11 +5,8 @@ services:
       dockerfile: Dockerfile
       args:
         TZ: ${TZ:-UTC}
-    environment:
-      - TZ=${TZ:-UTC}
     volumes:
       - "${CONFIG_PATH:-./config/}:/app/config/:rw"
     ports:
       - "8000:8000"
-    user: "${UID}:${GID}"
     restart: unless-stopped
