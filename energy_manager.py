@@ -176,6 +176,17 @@ class Plug:
             out.append({'hour': hr, 'value': kwh})
         return out
 
+    def get_current_power(self):
+        try:
+            status = self.tapo.request('get_energy_usage')
+            if 'current_power' in status:
+                return round(status['current_power'] / 1000, 2)
+            else:
+                return None
+        except Exception as e:
+            logging.error(f"Failed to get current power: {e}")
+            return None
+
 
 if __name__ == '__main__':
     last_config_mtime = None
@@ -302,3 +313,4 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             logging.info("Exiting…")
             break
+

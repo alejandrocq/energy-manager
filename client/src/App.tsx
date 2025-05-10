@@ -37,6 +37,7 @@ interface Plug {
     is_on: boolean | null
     timer_remaining: number | null
     periods: Period[]
+    current_power?: number | null
 }
 
 interface DataPoint {
@@ -218,7 +219,14 @@ const App: React.FC = () => {
                             <span className="plug-icon">🔌</span>
                             <span className="plug-name">{p.name}</span>
                             {p.timer_remaining != null && (
-                                <span className="timer-label">⏳ {fmtTime(p.timer_remaining)}</span>
+                                <span className="timer-label">
+                                    ⏳ {fmtTime(p.timer_remaining)}
+                                </span>
+                            )}
+                            {p.current_power != null && (
+                                <span className="power_label">
+                                    ⚡ {p.current_power} W
+                                </span>
                             )}
                             <button
                                 className={`enable-disable-btn`}

@@ -56,6 +56,14 @@
     margin-right: 12px;
 }
 
+.power_label {
+    margin-right: 12px;
+    color: #007acc;
+    font-weight: 500;
+    font-size: 0.98em;
+    letter-spacing: 0.01em;
+}
+
 .enable-disable-btn {
     width: 90px;
     height: 35px;
@@ -285,3 +293,4 @@ button:disabled {
         height: 300px;
     }
 }
+

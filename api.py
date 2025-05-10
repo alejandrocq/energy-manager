@@ -32,9 +32,12 @@ async def plugs():
             tr = await run_in_threadpool(p.get_rule_remain_seconds)
             prices = await run_in_threadpool(em.get_provider().get_prices, datetime.now())
             p.calculate_target_hours(prices)
+            # Fetch current energy usage (instantaneous)
+            current_power = await run_in_threadpool(p.get_current_power)
         except:
             st = None
             tr = None
+            current_power = None
 
         out.append({
             'name': p.name,
@@ -51,7 +54,8 @@ async def plugs():
                     'target_price': per['target'][1] if per.get('target') else None,
                 }
                 for per in p.periods
-            ]
+            ],
+            'current_power': current_power
         })
     return out
 
@@ -105,3 +109,4 @@ if __name__ == '__main__':
     import uvicorn
 
     uvicorn.run('api:app', host='0.0.0.0', port=8000, reload=True)
+
