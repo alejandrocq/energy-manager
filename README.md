@@ -110,10 +110,10 @@ address                   = 192.168.1.12
 
 We provide a combined Docker image serving both API and UI on port 8000:
 
-1. Run the startup script provided (`run.sh`) which takes your timezone, config path, host username and group name, resolves their UID/GID, and then exports them so the container user matches and can read the bind-mounted config directory:
+1. Run the startup script provided (`run.sh`) which takes your timezone, config path and host's user id. The latter is needed so the container user matches and can read the bind-mounted config directory:
    ```bash
    chmod +x run.sh
-   ./run.sh Europe/Madrid /path/to/config username group
+   ./run.sh Europe/Madrid /path/to/config your_user_id
    ```
 
 2. Access the app:

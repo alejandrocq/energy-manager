@@ -28,7 +28,10 @@ COPY --from=build-frontend /app/client/dist ./client/dist
 
 COPY entrypoint.sh /entrypoint.sh
 
-RUN useradd appuser && chown -R appuser /app
+ARG USER_ID=1000
+RUN useradd -u ${USER_ID} -m appuser && \
+    chown -R appuser /app
+
 USER root
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
