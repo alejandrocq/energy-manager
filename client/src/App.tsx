@@ -56,7 +56,7 @@ const fmtTime = (sec: number): string => {
         .padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
-const ToastNotification = memo(({ toast, onDismiss }: { toast: Toast, onDismiss: (id: string) => void }) => {
+const ToastNotification = memo(({toast, onDismiss}: { toast: Toast, onDismiss: (id: string) => void }) => {
     return (
         <div className={`toast ${toast.type}`}>
             <div className="toast-message">{toast.message}</div>
@@ -67,6 +67,10 @@ const ToastNotification = memo(({ toast, onDismiss }: { toast: Toast, onDismiss:
 
 const useToasts = () => {
     const [toasts, setToasts] = useState<Toast[]>([]);
+
+    const dismissToast = useCallback((id: string) => {
+        setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
+    }, []);
 
     const showToast = useCallback((type: ToastType, message: string, duration = 3000) => {
         const id = 'toast-' + Date.now();
@@ -81,11 +85,7 @@ const useToasts = () => {
         }
 
         return id;
-    }, []);
-
-    const dismissToast = useCallback((id: string) => {
-        setToasts(prevToasts => prevToasts.filter(toast => toast.id !== id));
-    }, []);
+    }, [dismissToast]);
 
     const ToastContainer = useMemo(() => {
         return (
@@ -101,7 +101,7 @@ const useToasts = () => {
         );
     }, [toasts, dismissToast]);
 
-    return { showToast, ToastContainer };
+    return {showToast, ToastContainer};
 };
 
 const App: React.FC = () => {
@@ -112,28 +112,28 @@ const App: React.FC = () => {
     const [loading, setLoading] = useState<boolean>(false)
     const [pendingOperations, setPendingOperations] = useState<Record<string, boolean>>({})
 
-    const { showToast, ToastContainer } = useToasts();
+    const {showToast, ToastContainer} = useToasts();
 
-    const fetchPlugs = async () => {
+    const fetchPlugs = useCallback(async () => {
         const res = await fetch(`${API}/plugs`)
         if (!res.ok) showToast('error', 'Failed to fetch plugs')
         else setPlugs(await res.json())
-    }
+    }, [showToast])
 
-    const fetchEnergy = async (addr: string) => {
+    const fetchEnergy = useCallback(async (addr: string) => {
         const res = await fetch(`${API}/plugs/${addr}/energy`)
         if (!res.ok) showToast('error', `Failed to fetch energy data for ${addr}`)
         else {
-            let data = await res.json()
+            const data = await res.json()
             setEnergyData(ed => ({...ed, [addr]: data}))
         }
-    }
+    }, [showToast])
 
-    const fetchPrices = async () => {
+    const fetchPrices = useCallback(async () => {
         const res = await fetch(`${API}/prices`)
         if (!res.ok) showToast('error', 'Failed to fetch prices data')
         else setPrices(await res.json())
-    }
+    }, [showToast])
 
     useEffect(() => {
         setLoading(true)
@@ -144,17 +144,17 @@ const App: React.FC = () => {
             fetchPlugs()
         }, 10000)
         return () => clearInterval(interval)
-    }, [])
+    }, [fetchPlugs, fetchPrices])
 
-    const expand = (addr: string) => {
+    const expand = useCallback((addr: string) => {
         if (open === addr) setOpen(null)
         else {
             setOpen(addr)
             fetchEnergy(addr)
         }
-    }
+    }, [open, fetchEnergy])
 
-    const togglePlug = async (plug: Plug) => {
+    const togglePlug = useCallback(async (plug: Plug) => {
         const operationKey = `toggle-${plug.address}`
         setPendingOperations(prev => ({...prev, [operationKey]: true}))
 
@@ -165,7 +165,7 @@ const App: React.FC = () => {
             response = await fetch(`${API}/plugs/${plug.address}/off`, {method: 'POST'})
         }
 
-        let action = plug.is_on ? 'OFF' : 'ON'
+        const action = plug.is_on ? 'OFF' : 'ON'
 
         if (response.ok) {
             showToast('success', `${plug.name}: Turned ${action} successfully`)
@@ -176,9 +176,9 @@ const App: React.FC = () => {
         }
 
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
-    }
+    }, [showToast, fetchPlugs, fetchEnergy, open])
 
-    const toggleEnable = async (address: string, e: React.MouseEvent) => {
+    const toggleEnable = useCallback(async (address: string, e: React.MouseEvent) => {
         e.stopPropagation()
         const operationKey = `enable-${address}`
         const plug = plugs.find(p => p.address === address)
@@ -186,7 +186,7 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: true}))
 
         const action = plug?.enabled ? 'disabled' : 'enabled'
-        let response = await fetch(`${API}/plugs/${address}/toggle_enable`, {method: 'POST'})
+        const response = await fetch(`${API}/plugs/${address}/toggle_enable`, {method: 'POST'})
 
         if (response.ok) {
             showToast('success', `${plug?.name}: ${action} successfully`)
@@ -196,7 +196,7 @@ const App: React.FC = () => {
         }
 
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
-    }
+    }, [plugs, showToast, fetchPlugs])
 
     if (loading) {
         return (
