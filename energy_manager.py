@@ -11,7 +11,7 @@ from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from PyP100 import PyP100, auth_protocol, MeasureInterval
-from providers import PROVIDERS
+from providers import PROVIDERS, PricesProvider
 
 CONFIG_FILE_PATH = "config/config.properties"
 CHART_FILE_NAME = "prices_chart.png"
@@ -130,11 +130,12 @@ class Plug:
             })
 
     def calculate_target_hours(self, prices: list[tuple[int, float]]):
-        for period in self.periods:
-            period['target'] = min(
-                [(h, p) for h, p in prices if period['start_hour'] <= h <= period['end_hour']],
-                key=lambda x: x[1]
-            )
+        if prices:
+            for period in self.periods:
+                period['target'] = min(
+                    [(h, p) for h, p in prices if period['start_hour'] <= h <= period['end_hour']],
+                    key=lambda x: x[1]
+                )
 
     def runtime_seconds(self):
         current_hour = datetime.now().hour
@@ -194,7 +195,7 @@ if __name__ == '__main__':
 
     manager_from_email = None
     manager_to_email = None
-    provider = None
+    provider: PricesProvider | None = None
     plugs = []
 
     while True:
@@ -209,7 +210,7 @@ if __name__ == '__main__':
             plugs = get_plugs(True)
             target_date = None  # Force reloading prices
 
-        if target_date is None or target_date.date() != datetime.now().date():
+        if (target_date is None or target_date.date() != datetime.now().date()) and not provider.unavailable():
             target_date = datetime.now()
             current_date = target_date.strftime("%Y%m%d")
             current_date_on_file = target_date.strftime("%Y;%m;%d")
@@ -217,6 +218,9 @@ if __name__ == '__main__':
             logging.info(f"Loading prices data for {target_date.date()}")
 
             hourly_prices = provider.get_prices(target_date)
+            if not hourly_prices:
+                logging.warning(f"No prices data available for {target_date.date()}. Skipping email.")
+                continue
 
             email_message = f"<p>💶🔋 Electricity prices for {target_date.date()}:</p>"
             for hour, price in hourly_prices:
@@ -228,6 +232,9 @@ if __name__ == '__main__':
                 email_message += "<p>"
                 email_message += f"🔌 {plug.name}:<br>"
                 for period in plug.periods:
+                    if not period['target']:
+                        continue
+
                     sh = period['start_hour']
                     eh = period['end_hour']
                     th, tp = period['target']
@@ -313,4 +320,3 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             logging.info("Exiting…")
             break
-

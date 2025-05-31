@@ -26,11 +26,11 @@ async def run_in_threadpool(func, *args, **kwargs):
 @app.get('/api/plugs')
 async def plugs():
     out = []
+    prices = await run_in_threadpool(em.get_provider().get_prices, datetime.now())
     for p in em.get_plugs():
         try:
             st = await run_in_threadpool(p.tapo.get_status)
             tr = await run_in_threadpool(p.get_rule_remain_seconds)
-            prices = await run_in_threadpool(em.get_provider().get_prices, datetime.now())
             p.calculate_target_hours(prices)
             # Fetch current energy usage (instantaneous)
             current_power = await run_in_threadpool(p.get_current_power)

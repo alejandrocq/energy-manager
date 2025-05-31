@@ -1,7 +1,7 @@
 import time
 import requests
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from abc import ABC, abstractmethod
 from functools import wraps
 
@@ -31,17 +31,35 @@ def cached_prices(func):
 
 class PricesProvider(ABC):
     @abstractmethod
+    def unavailable(self) -> bool:
+        pass
+
+    @abstractmethod
     def get_prices(self, target_date: datetime) -> list[tuple[int, float]]:
         pass
 
 
 class OmieProvider(PricesProvider):
     BASE_URL = "https://www.omie.es/es/file-download?parents=marginalpdbc&filename=marginalpdbc_{date}.1"
+    MAX_RETRIES = 3
+    RETRY_TIME_SECONDS = 5
+
+    def __init__(self):
+        self.unavailable_until = None
+
+    def unavailable(self):
+        return self.unavailable_until and datetime.now() < self.unavailable_until
 
     @cached_prices
     def get_prices(self, target_date: datetime) -> list[tuple[int, float]]:
+        if self.unavailable():
+            return []
+        else:
+            self.unavailable_until = None
+
         target_date_string = target_date.strftime("%Y%m%d")
         hourly_prices = []
+        retries = 0
 
         # Retry loop: keep trying every 15s until we fetch and parse successfully
         while True:
@@ -62,8 +80,15 @@ class OmieProvider(PricesProvider):
 
                 return hourly_prices
             except Exception as e:
-                logging.error(f"Failed to fetch/parse prices: {e}. Retrying in 15s…")
-                time.sleep(15)
+                logging.error(f"Failed to fetch/parse prices: {e}. Retrying in {self.RETRY_TIME_SECONDS}s…")
+                retries += 1
+                if retries >= self.MAX_RETRIES:
+                    break
+                time.sleep(self.RETRY_TIME_SECONDS)
+
+        self.unavailable_until = datetime.now() + timedelta(minutes=15)
+        logging.error(f"Failed to fetch prices after {self.MAX_RETRIES} retries. Unavailable until {self.unavailable_until}.")
+        return []
 
 
 PROVIDERS = {
