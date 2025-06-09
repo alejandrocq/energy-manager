@@ -2,6 +2,12 @@ import React, {useCallback, useEffect, useState, useMemo, memo} from 'react'
 import './App.css'
 import {CategoryScale, Chart as ChartJS, Legend, LinearScale, BarElement, Title, Tooltip} from 'chart.js'
 import {Bar} from 'react-chartjs-2'
+import {SlClose} from "react-icons/sl";
+import {FaClock, FaPlug} from "react-icons/fa6";
+import {ImPower} from "react-icons/im";
+import {MdEnergySavingsLeaf} from "react-icons/md";
+import {FaRegChartBar} from "react-icons/fa";
+import {LuHousePlug} from "react-icons/lu";
 
 ChartJS.register(
     CategoryScale,
@@ -59,7 +65,7 @@ const ToastNotification = memo(({toast, onDismiss}: { toast: Toast, onDismiss: (
     return (
         <div className={`toast ${toast.type}`}>
             <div className="toast-message">{toast.message}</div>
-            <button className="toast-close" onClick={() => onDismiss(toast.id)}>✕</button>
+            <button className="toast-close" onClick={() => onDismiss(toast.id)}><SlClose/></button>
         </div>
     );
 });
@@ -210,25 +216,43 @@ const App: React.FC = () => {
         <div className="app-container">
             {ToastContainer}
 
-            <h1>⚡️ Energy Manager</h1>
-            <ul className="plug-list">
+            <div className="flex justify-center mb-5">
+                <h1 className="flex items-center gap-1 text-3xl md:text-4xl font-bold">
+                    <MdEnergySavingsLeaf className="inline-block align-middle size-18 text-green-700"/>
+                    Energy Manager
+                </h1>
+            </div>
+            <ul className="list-none p-0">
+                <h2 className="flex items-center gap-1 text-2xl font-bold mb-4"><LuHousePlug/>Plugs</h2>
                 {plugs.map(p => (
-                    <li key={p.address} className={`plug-item ${p.enabled ? '' : 'disabled'}`}>
-                        <div className="plug-header" onClick={() => expand(p.address)}>
-                            <span className="plug-icon">🔌</span>
-                            <span className="plug-name">{p.name}</span>
+                    <li
+                        key={p.address}
+                        className={`
+                            mb-4 border border-[#eee] rounded-lg overflow-hidden
+                            ${p.enabled ? 'bg-white' : 'opacity-60 bg-[#f8f9fa] border-[#e9ecef]'}
+                        `}
+                    >
+                        <div className="flex flex-col md:flex-row items-center gap-1 md:gap-2 p-[12px] cursor-pointer bg-[#f9f9f9] hover:bg-[#eef6ff]" onClick={() => expand(p.address)}>
+                            <span className="text-5xl md:text-2xl"><FaPlug/></span>
+                            <span className="flex-1">{p.name}</span>
                             {p.timer_remaining != null && (
-                                <span className="timer-label">
-                                    ⏳ {fmtTime(p.timer_remaining)}
-                                </span>
+                                <div className="flex items-center gap-1 text-green-800">
+                                    <FaClock/> {fmtTime(p.timer_remaining)}
+                                </div>
                             )}
                             {p.current_power != null && (
-                                <span className="power_label">
-                                    ⚡ {p.current_power} W
-                                </span>
+                                <div className="flex items-center gap-1 text-blue-500">
+                                    <ImPower/> {p.current_power} W
+                                </div>
                             )}
                             <button
-                                className={`enable-disable-btn`}
+                                className={`
+                                    w-full md:w-[90px] h-[35px] mx-1 m-2 md:m-0 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded
+                                    text-[0.9rem] shadow-md border-none cursor-pointer
+                                    transition-shadow duration-300
+                                    hover:from-blue-800 hover:to-blue-900 hover:shadow-lg
+                                    disabled:opacity-50 disabled:cursor-not-allowed
+                                `}
                                 disabled={pendingOperations[`enable-${p.address}`]}
                                 onClick={(e) => toggleEnable(p.address, e)}>
                                 {pendingOperations[`enable-${p.address}`] ?
@@ -237,7 +261,15 @@ const App: React.FC = () => {
                             </button>
                             {p.enabled && (
                                 <button
-                                    className={`plug-toggle-btn ${p.is_on ? 'on' : 'off'}`}
+                                    className={`
+                                        w-full md:w-[90px] h-[35px] text-[0.9rem] rounded border-none cursor-pointer
+                                        transition-shadow duration-200
+                                        ${p.is_on
+                                            ? 'bg-green-600 hover:bg-green-700 shadow-md border border-green-600'
+                                            : 'bg-red-600 hover:bg-red-700 shadow-md border border-red-600'}
+                                        text-white
+                                        disabled:opacity-50 disabled:cursor-not-allowed
+                                    `}
                                     disabled={pendingOperations[`toggle-${p.address}`]}
                                     onClick={e => {
                                         e.stopPropagation()
@@ -251,14 +283,14 @@ const App: React.FC = () => {
                         </div>
                         {open === p.address && energyData[p.address] && (
                             <>
-                                <div className="plug-details">
+                                <div className="p-[12px] bg-[#fafafa] border-t-1 border-t-[#eee] border-t-solid border-b-1 border-b-[#eee] border-b-solid text-[0.9rem] ">
                                     <p><strong>Address:</strong> {p.address}</p>
                                     {p.periods.length > 0 && (
                                         <>
                                             <p><strong>Periods:</strong></p>
-                                            <ul className="period-list">
+                                            <ul className="list-none p-0 m-0">
                                                 {p.periods.map((period, idx) => (
-                                                    <li key={idx} className="period-item">
+                                                    <li key={idx} className="text-[0.9rem]">
                                                         {period.start_hour}:00 - {period.end_hour}:00 | Runtime {period.runtime_human} |
                                                         Target {period.target_hour}:00 ({period.target_price} €/kWh)
                                                     </li>
@@ -276,8 +308,7 @@ const App: React.FC = () => {
                                                 {
                                                     label: 'Energy (kWh)',
                                                     data: energyData[p.address].map(pt => pt.value),
-                                                    borderColor: '#007acc',
-                                                    backgroundColor: '#007acc'
+                                                    backgroundColor: '#6366f1'
                                                 }
                                             ]
                                         }}
@@ -297,7 +328,7 @@ const App: React.FC = () => {
                 ))}
             </ul>
 
-            <h2>📈 Today’s Price Curve</h2>
+            <h2 className="flex items-center gap-1 text-2xl font-bold"><FaRegChartBar/>Today’s prices</h2>
             <div className="chart-container">
                 <Bar
                     data={{
@@ -306,8 +337,7 @@ const App: React.FC = () => {
                             {
                                 label: 'Price (€/kWh)',
                                 data: prices.map(pt => pt.value),
-                                borderColor: '#007acc',
-                                backgroundColor: '#007acc'
+                                backgroundColor: '#6366f1'
                             }
                         ]
                     }}
@@ -316,7 +346,6 @@ const App: React.FC = () => {
                         maintainAspectRatio: false,
                         plugins: {
                             legend: {position: 'top'},
-                            title: {display: true, text: 'Electricity Prices Today'}
                         },
                         scales: {
                             y: {beginAtZero: true}

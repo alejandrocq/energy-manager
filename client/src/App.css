@@ -1,5 +1,7 @@
+@import 'tailwindcss';
+
 .app-container {
-    max-width: 800px;
+    max-width: 1200px;
     margin: 20px auto;
     padding: 16px;
     background: #fff;
@@ -7,143 +9,10 @@
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
 }
 
-.app-container h1 {
-    text-align: center;
-    margin-bottom: 24px;
-}
-
-.plug-list {
-    list-style: none;
-    padding: 0;
-}
-
-.plug-item {
-    margin-bottom: 16px;
-    border: 1px solid #eee;
-    border-radius: 6px;
-    overflow: hidden;
-}
-.plug-item.disabled {
-    opacity: 0.6;
-    background: #f8f9fa;
-    border-color: #e9ecef;
-}
-
-.plug-header {
-    display: flex;
-    align-items: center;
-    padding: 12px;
-    cursor: pointer;
-    background: #f9f9f9;
-    position: relative;
-}
-
-.plug-header:hover {
-    background: #eef6ff;
-}
-
-.plug-icon {
-    font-size: 1.5rem;
-    margin-right: 12px;
-}
-
-.plug-name {
-    flex: 1;
-    font-weight: 500;
-}
-
-.timer-label {
-    margin-right: 12px;
-}
-
-.power_label {
-    margin-right: 12px;
-    color: #007acc;
-    font-weight: 500;
-    font-size: 0.98em;
-    letter-spacing: 0.01em;
-}
-
-.enable-disable-btn {
-    width: 90px;
-    height: 35px;
-    background: linear-gradient(45deg, #007bff, #0056b3);
-    color: white;
-    border-radius: 4px;
-    padding: 8px 16px;
-    margin: 0 4px 0 4px;
-    font-weight: 600;
-    box-shadow: 0 2px 4px rgba(0,123,255,0.6);
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.3s ease, box-shadow 0.3s ease;
-}
-.enable-disable-btn:hover {
-    background: linear-gradient(45deg, #0056b3, #003d80);
-    box-shadow: 0 4px 8px rgba(0,86,179,0.8);
-}
-
-.plug-toggle-btn {
-    width: 90px;
-    height: 35px;
-    padding: 6px 12px;
-    margin: 0 4px 0 4px;
-    font-size: 0.9rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    color: #fff;
-    transition: background 0.2s;
-}
-.plug-toggle-btn.on {
-    background: #28a745;
-    box-shadow: 0 4px 6px rgba(40, 167, 69, 0.4);
-    border: 1px solid #28a745;
-    transition: background 0.3s, box-shadow 0.3s;
-}
-.plug-toggle-btn.on:hover {
-    background: #218838;
-    box-shadow: 0 6px 12px rgba(33, 136, 56, 0.6);
-}
-.plug-toggle-btn.off {
-    background: #dc3545;
-    box-shadow: 0 4px 6px rgba(220, 53, 69, 0.4);
-    border: 1px solid #dc3545;
-    transition: background 0.3s, box-shadow 0.3s;
-}
-.plug-toggle-btn.off:hover {
-    background: #c82333;
-    box-shadow: 0 6px 12px rgba(200, 35, 51, 0.6);
-}
-.plug-toggle-btn:hover {
-    background: #005fa3;
-}
-
-.plug-details {
-    padding: 12px;
-    background: #fafafa;
-    border-top: 1px solid #eee;
-    font-size: 0.9rem;
-}
-
-.period-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.period-item {
-    font-size: 0.9rem;
-}
-
 .chart-container {
     width: 100%;
     height: 400px;
     padding: 16px;
-}
-
-.price-chart {
-    text-align: center;
 }
 
 /* Spinner styles */
@@ -178,18 +47,6 @@
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
-}
-
-/* Button styles when disabled */
-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.8;
-}
-
-.enable-disable-btn:disabled,
-.plug-toggle-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
 }
 
 /* Toast notification styles */
@@ -253,44 +110,11 @@ button:disabled {
     }
 }
 
-@media (max-width: 600px) {
-    .plug-header {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-    }
-    .plug-icon {
-        font-size: 2.5rem;
-        margin-bottom: 8px;
-        margin-right: 0;
-    }
-    .plug-name {
-        flex: none;
-        margin-bottom: 8px;
-    }
-    .timer-label {
-        margin: 8px 0;
-    }
-    .plug-toggle-btn {
-        margin: 8px 0;
-        width: 100%;
-        text-align: center;
-    }
-    .enable-disable-btn {
-        width: 100%;
-        margin: 8px 0;
-    }
-    .plug-details {
-        padding: 12px;
-        background: #fafafa;
-        border-top: 1px solid #eee;
-        font-size: 0.85rem;
-    }
-    .period-item {
-        font-size: 0.85rem;
+@media (width < 48rem) {
+    .app-container {
+        margin: 0 auto;
     }
     .chart-container {
         height: 300px;
     }
 }
-
