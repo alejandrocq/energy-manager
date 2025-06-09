@@ -1,13 +1,12 @@
 import React, {useCallback, useEffect, useState, useMemo, memo} from 'react'
 import './App.css'
-import {CategoryScale, Chart as ChartJS, Legend, LinearScale, LineElement, PointElement, Title, Tooltip} from 'chart.js'
-import {Line} from 'react-chartjs-2'
+import {CategoryScale, Chart as ChartJS, Legend, LinearScale, BarElement, Title, Tooltip} from 'chart.js'
+import {Bar} from 'react-chartjs-2'
 
 ChartJS.register(
     CategoryScale,
     LinearScale,
-    PointElement,
-    LineElement,
+    BarElement,
     Title,
     Tooltip,
     Legend
@@ -270,7 +269,7 @@ const App: React.FC = () => {
                                     )}
                                 </div>
                                 <div className="chart-container">
-                                    <Line
+                                    <Bar
                                         data={{
                                             labels: energyData[p.address].map(pt => pt.hour.toString()),
                                             datasets: [
@@ -278,7 +277,7 @@ const App: React.FC = () => {
                                                     label: 'Energy (kWh)',
                                                     data: energyData[p.address].map(pt => pt.value),
                                                     borderColor: '#007acc',
-                                                    backgroundColor: 'rgba(0,122,204,0.2)'
+                                                    backgroundColor: '#007acc'
                                                 }
                                             ]
                                         }}
@@ -300,15 +299,15 @@ const App: React.FC = () => {
 
             <h2>📈 Today’s Price Curve</h2>
             <div className="chart-container">
-                <Line
+                <Bar
                     data={{
                         labels: prices.map(pt => pt.hour.toString()),
                         datasets: [
                             {
                                 label: 'Price (€/kWh)',
                                 data: prices.map(pt => pt.value),
-                                borderColor: '#e67e22',
-                                backgroundColor: 'rgba(230,126,34,0.2)'
+                                borderColor: '#007acc',
+                                backgroundColor: '#007acc'
                             }
                         ]
                     }}
