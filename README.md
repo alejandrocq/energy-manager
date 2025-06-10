@@ -3,7 +3,8 @@
 An intelligent energy‐saving app that schedules your Tapo smart plugs based on electricity prices 📈.  
 Includes a FastAPI backend and a Vite+React frontend with live plug control and usage charts.
 
-![example ui](docs/example_ui.png)
+![example ui](docs/ui.png)
+![example ui 2](docs/ui2.png)
 
 ## 🚀 Features
 
