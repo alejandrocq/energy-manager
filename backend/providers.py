@@ -68,15 +68,28 @@ class OmieProvider(PricesProvider):
                 response.raise_for_status()
                 file_content = response.text
 
+                quarter_prices = []
                 for line in file_content.splitlines():
                     if line.startswith(target_date.strftime("%Y;%m;%d")):
                         parts = line.split(";")
-                        hour = int(parts[3]) - 1
+                        quarter = int(parts[3]) - 1  # Convert 1-based quarter to 0-based (1->0, 2->1, 3->2, 4->3, etc.)
                         price = round(float(parts[5]) / 1000, 3)
-                        hourly_prices.append((hour, price))
+                        quarter_prices.append((quarter, price))
+
+                if not quarter_prices:
+                    raise ValueError("No quarter prices found")
+
+                # Normalize to 24 hours: take first quarter of each hour
+                for hour in range(24):
+                    first_quarter_of_hour = hour * 4  # Each hour has 4 quarters
+                    # Find the price for the first quarter of this hour
+                    for quarter, price in quarter_prices:
+                        if quarter == first_quarter_of_hour:
+                            hourly_prices.append((hour, price))
+                            break
 
                 if not hourly_prices:
-                    raise ValueError("No hourly prices found")
+                    raise ValueError("No hourly prices found after normalization")
 
                 return hourly_prices
             except Exception as e:
