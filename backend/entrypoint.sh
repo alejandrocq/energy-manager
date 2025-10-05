@@ -22,7 +22,7 @@ terminate() {
 
 trap terminate TERM INT
 
-gosu appuser python energy_manager.py &
+gosu appuser python manager.py &
 ENERGY_MANAGER_PID=$!
 
 gosu appuser uvicorn api:app --host 0.0.0.0 --port 8000 &

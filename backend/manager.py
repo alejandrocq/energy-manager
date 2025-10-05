@@ -20,84 +20,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 config = configparser.ConfigParser()
 
-
-def human_time_to_seconds(human_time):
-    match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
-    h = match.group(1)
-    hours = int(h.replace('h', '') if h else 0)
-    m = match.group(2)
-    minutes = int(m.replace('m', '') if m else 0)
-    s = match.group(3)
-    seconds = int(s.replace('s', '') if s else 0)
-    return hours * 3600 + minutes * 60 + seconds
-
-
-def send_email(subject, content, from_email, to_email, attach_chart=False):
-    mime_message = MIMEMultipart("related")
-    mime_message["From"] = from_email
-    mime_message["To"] = to_email
-    mime_message["Subject"] = subject
-    html_body = f"""
-    <!DOCTYPE html>
-    <html>
-    <body>
-    {content}
-    {"<br><img src='cid:chart'>" if attach_chart else ""}
-    </body>
-    </html>
-    """
-    mime_text = MIMEText(html_body, "html", _charset="utf-8")
-    mime_message.attach(mime_text)
-    if attach_chart:
-        with open(CHART_FILE_NAME, "rb") as f:
-            chart = MIMEImage(f.read())
-        chart.add_header("Content-ID", "<chart>")
-        mime_message.attach(chart)
-    try:
-        with smtplib.SMTP('localhost') as smtp_server:
-            smtp_server.sendmail(from_email, to_email, mime_message.as_string())
-    except Exception as err:
-        logging.error(f"Failed to send email: {err}")
-
-
-def toggle_plug_enabled(address: str):
-    for section in config.sections():
-        if section.startswith("plug") and config[section].get('address') == address:
-            current = config.getboolean(section, 'enabled', fallback=True)
-
-            for plug in get_plugs():
-                if plug.address == address:
-                    plug.tapo.turnOff()
-                    break
-
-            config.set(section, 'enabled', str(not current).lower())
-            with open(CONFIG_FILE_PATH, 'w') as configfile:
-                config.write(configfile)
-            return
-    raise ValueError("Plug not found")
-
-
-def get_plugs(enabled_only=False):
-    config.read(CONFIG_FILE_PATH)
-    tapo_email = config.get('credentials', 'tapo_email')
-    tapo_password = config.get('credentials', 'tapo_password')
-    out = []
-    for section in config.sections():
-        if section.startswith("plug") and (not enabled_only or config.getboolean(section, 'enabled', fallback=False)):
-            out.append(Plug(config[section], tapo_email, tapo_password))
-    return out
-
-
-def get_provider():
-    config.read(CONFIG_FILE_PATH)
-    return PROVIDERS[config.get('settings', 'provider')]
-
-
-def get_plug_energy(address):
-    p: Plug = next(x for x in get_plugs() if x.address == address)
-    return p.get_hourly_energy()
-
-
 class Plug:
     def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str):
         self.name = plug_config.get('name')
@@ -187,6 +109,83 @@ class Plug:
         except Exception as e:
             logging.error(f"Failed to get current power: {e}")
             return None
+
+
+def human_time_to_seconds(human_time):
+    match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
+    h = match.group(1)
+    hours = int(h.replace('h', '') if h else 0)
+    m = match.group(2)
+    minutes = int(m.replace('m', '') if m else 0)
+    s = match.group(3)
+    seconds = int(s.replace('s', '') if s else 0)
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def send_email(subject, content, from_email, to_email, attach_chart=False):
+    mime_message = MIMEMultipart("related")
+    mime_message["From"] = from_email
+    mime_message["To"] = to_email
+    mime_message["Subject"] = subject
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <body>
+    {content}
+    {"<br><img src='cid:chart'>" if attach_chart else ""}
+    </body>
+    </html>
+    """
+    mime_text = MIMEText(html_body, "html", _charset="utf-8")
+    mime_message.attach(mime_text)
+    if attach_chart:
+        with open(CHART_FILE_NAME, "rb") as f:
+            chart = MIMEImage(f.read())
+        chart.add_header("Content-ID", "<chart>")
+        mime_message.attach(chart)
+    try:
+        with smtplib.SMTP('localhost') as smtp_server:
+            smtp_server.sendmail(from_email, to_email, mime_message.as_string())
+    except Exception as err:
+        logging.error(f"Failed to send email: {err}")
+
+
+def toggle_plug_enabled(address: str):
+    for section in config.sections():
+        if section.startswith("plug") and config[section].get('address') == address:
+            current = config.getboolean(section, 'enabled', fallback=True)
+
+            for plug in get_plugs():
+                if plug.address == address:
+                    plug.tapo.turnOff()
+                    break
+
+            config.set(section, 'enabled', str(not current).lower())
+            with open(CONFIG_FILE_PATH, 'w') as configfile:
+                config.write(configfile)
+            return
+    raise ValueError("Plug not found")
+
+
+def get_plugs(enabled_only=False) -> list[Plug]:
+    config.read(CONFIG_FILE_PATH)
+    tapo_email = config.get('credentials', 'tapo_email')
+    tapo_password = config.get('credentials', 'tapo_password')
+    out = []
+    for section in config.sections():
+        if section.startswith("plug") and (not enabled_only or config.getboolean(section, 'enabled', fallback=False)):
+            out.append(Plug(config[section], tapo_email, tapo_password))
+    return out
+
+
+def get_provider():
+    config.read(CONFIG_FILE_PATH)
+    return PROVIDERS[config.get('settings', 'provider')]
+
+
+def get_plug_energy(address):
+    p: Plug = next(x for x in get_plugs() if x.address == address)
+    return p.get_hourly_energy()
 
 
 if __name__ == '__main__':

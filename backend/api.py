@@ -1,10 +1,9 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-import energy_manager as em
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+import manager as m
 
 app = FastAPI()
 
@@ -26,8 +25,8 @@ async def run_in_threadpool(func, *args, **kwargs):
 @app.get('/api/plugs')
 async def plugs():
     out = []
-    prices = await run_in_threadpool(em.get_provider().get_prices, datetime.now())
-    for p in em.get_plugs():
+    prices = await run_in_threadpool(m.get_provider().get_prices, datetime.now())
+    for p in m.get_plugs():
         try:
             st = await run_in_threadpool(p.tapo.get_status)
             tr = await run_in_threadpool(p.get_rule_remain_seconds)
@@ -63,7 +62,7 @@ async def plugs():
 @app.get('/api/plugs/{address}/energy')
 async def plug_energy(address: str):
     try:
-        return await run_in_threadpool(em.get_plug_energy, address)
+        return await run_in_threadpool(m.get_plug_energy, address)
     except StopIteration:
         raise HTTPException(404, 'not found')
 
@@ -71,7 +70,7 @@ async def plug_energy(address: str):
 @app.post('/api/plugs/{address}/toggle_enable')
 async def toggle_enable(address: str):
     try:
-        await run_in_threadpool(em.toggle_plug_enabled, address)
+        await run_in_threadpool(m.toggle_plug_enabled, address)
         return {'status': 'success'}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -81,7 +80,7 @@ async def toggle_enable(address: str):
 
 @app.post('/api/plugs/{address}/on')
 async def plug_on(address: str):
-    for p in em.get_plugs():
+    for p in m.get_plugs():
         if p.address == address:
             await run_in_threadpool(p.tapo.turnOn)
             return {'address': address, 'turned_on': True}
@@ -90,7 +89,7 @@ async def plug_on(address: str):
 
 @app.post('/api/plugs/{address}/off')
 async def plug_off(address: str):
-    for p in em.get_plugs():
+    for p in m.get_plugs():
         if p.address == address:
             await run_in_threadpool(p.tapo.turnOff)
             return {'address': address, 'turned_off': True}
@@ -99,11 +98,9 @@ async def plug_off(address: str):
 
 @app.get('/api/prices')
 async def get_prices():
-    data = await run_in_threadpool(em.get_provider().get_prices, datetime.now())
+    data = await run_in_threadpool(m.get_provider().get_prices, datetime.now())
     return [{'hour': h, 'value': p} for h, p in data]
 
-
-app.mount("/", StaticFiles(directory="client/dist", html=True, check_dir=False), name="client")
 
 if __name__ == '__main__':
     import uvicorn
