@@ -289,8 +289,8 @@ const App: React.FC = () => {
                                         <>
                                             <p><strong>Periods:</strong></p>
                                             <ul className="list-none p-0 m-0">
-                                                {p.periods.map((period, idx) => (
-                                                    <li key={idx} className="text-[0.9rem]">
+                                                {p.periods.map((period) => (
+                                                    <li key={`${period.start_hour}-${period.end_hour}-${period.target_hour}`} className="text-[0.9rem]">
                                                         {period.start_hour}:00 - {period.end_hour}:00 | Runtime {period.runtime_human} |
                                                         Target {period.target_hour}:00 ({period.target_price} €/kWh)
                                                     </li>
