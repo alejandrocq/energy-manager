@@ -106,6 +106,7 @@ async def plug_on_timed(address: str, request: TimedTurnOnRequest):
     for p in m.get_plugs():
         if p.address == address:
             duration_seconds = request.duration_minutes * 60
+            await run_in_threadpool(p.cancel_countdown_rules)
             await run_in_threadpool(p.tapo.turnOn)
             await run_in_threadpool(p.tapo.turnOffWithDelay, duration_seconds)
             return {

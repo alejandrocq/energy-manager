@@ -81,6 +81,27 @@ class Plug:
             logging.error(f"Failed to get countdown rules: {e}")
         return result
 
+    def cancel_countdown_rules(self):
+        try:
+            rules_response = self.tapo.getCountDownRules()
+            rules = rules_response.get('rule_list', [])
+
+            # Disable all active rules by setting their 'enable' to 0
+            for rule in rules:
+                if rule.get('enable', 0) == 1:
+                    rule_id = rule.get('id')
+                    if rule_id:
+                        # Edit the rule to disable it
+                        self.tapo.request('edit_countdown_rule', {
+                            'id': rule_id,
+                            'enable': False,
+                            'delay': rule.get('delay', 0),
+                            'desired_states': rule.get('desired_states', {'on': False})
+                        })
+            logging.info(f"Cancelled countdown rules for {self.name}")
+        except Exception as e:
+            logging.error(f"Failed to cancel countdown rules for {self.name}: {e}")
+
     def get_hourly_energy(self):
         now = datetime.now()
         day_start = datetime(now.year, now.month, now.day)
