@@ -8,6 +8,8 @@ import {ImPower} from "react-icons/im";
 import {MdEnergySavingsLeaf} from "react-icons/md";
 import {FaRegChartBar} from "react-icons/fa";
 import {LuHousePlug} from "react-icons/lu";
+import {Modal} from "./Modal";
+import {DurationSelector} from "./DurationSelector";
 
 ChartJS.register(
     CategoryScale,
@@ -116,6 +118,7 @@ const App: React.FC = () => {
     const [prices, setPrices] = useState<DataPoint[]>([])
     const [loading, setLoading] = useState<boolean>(false)
     const [pendingOperations, setPendingOperations] = useState<Record<string, boolean>>({})
+    const [timedModalPlug, setTimedModalPlug] = useState<string | null>(null)
 
     const {showToast, ToastContainer} = useToasts();
 
@@ -203,6 +206,35 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }, [plugs, showToast, fetchPlugs])
 
+    const timedTurnOn = useCallback(async (address: string, minutes: number) => {
+        const plug = plugs.find(p => p.address === address)
+        const operationKey = `timed-${address}`
+
+        setPendingOperations(prev => ({...prev, [operationKey]: true}))
+        setTimedModalPlug(null)
+
+        const response = await fetch(`${API}/plugs/${address}/on_timed`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({duration_minutes: minutes})
+        })
+
+        if (response.ok) {
+            const hours = Math.floor(minutes / 60)
+            const mins = minutes % 60
+            const durationStr = hours > 0
+                ? `${hours}h ${mins > 0 ? mins + 'm' : ''}`
+                : `${mins}m`
+            showToast('success', `${plug?.name}: Turned ON for ${durationStr}`)
+            await fetchPlugs()
+            if (open === address) await fetchEnergy(address)
+        } else {
+            showToast('error', `${plug?.name}: Failed to turn ON with timer`)
+        }
+
+        setPendingOperations(prev => ({...prev, [operationKey]: false}))
+    }, [plugs, showToast, fetchPlugs, fetchEnergy, open])
+
     if (loading) {
         return (
             <div className="app-container loading-container">
@@ -260,25 +292,44 @@ const App: React.FC = () => {
                                     p.enabled ? 'Disable' : 'Enable'}
                             </button>
                             {p.enabled && (
-                                <button
-                                    className={`
-                                        w-full md:w-[90px] h-[35px] text-[0.9rem] rounded border-none cursor-pointer
-                                        transition-shadow duration-200
-                                        ${p.is_on
-                                            ? 'bg-green-600 hover:bg-green-700 shadow-md border border-green-600'
-                                            : 'bg-red-600 hover:bg-red-700 shadow-md border border-red-600'}
-                                        text-white
-                                        disabled:opacity-50 disabled:cursor-not-allowed
-                                    `}
-                                    disabled={pendingOperations[`toggle-${p.address}`]}
-                                    onClick={e => {
-                                        e.stopPropagation()
-                                        togglePlug(p)
-                                    }}>
-                                    {pendingOperations[`toggle-${p.address}`] ?
-                                        <span className="spinner-small"></span> :
-                                        p.is_on ? 'On' : 'Off'}
-                                </button>
+                                <>
+                                    <button
+                                        className={`
+                                            w-full md:w-[90px] h-[35px] text-[0.9rem] rounded border-none cursor-pointer
+                                            transition-shadow duration-200
+                                            ${p.is_on
+                                                ? 'bg-green-600 hover:bg-green-700 shadow-md border border-green-600'
+                                                : 'bg-red-600 hover:bg-red-700 shadow-md border border-red-600'}
+                                            text-white
+                                            disabled:opacity-50 disabled:cursor-not-allowed
+                                        `}
+                                        disabled={pendingOperations[`toggle-${p.address}`]}
+                                        onClick={e => {
+                                            e.stopPropagation()
+                                            togglePlug(p)
+                                        }}>
+                                        {pendingOperations[`toggle-${p.address}`] ?
+                                            <span className="spinner-small"></span> :
+                                            p.is_on ? 'On' : 'Off'}
+                                    </button>
+                                    <button
+                                        className="w-full md:w-[110px] h-[35px] mx-1 m-2 md:m-0 bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-purple-800 hover:to-purple-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                        onClick={e => {
+                                            e.stopPropagation()
+                                            setTimedModalPlug(p.address)
+                                        }}
+                                        disabled={pendingOperations[`timed-${p.address}`]}
+                                    >
+                                        {pendingOperations[`timed-${p.address}`] ? (
+                                            <span className="spinner-small"></span>
+                                        ) : (
+                                            <>
+                                                <FaClock className="w-3 h-3" />
+                                                <span>Timer</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </>
                             )}
                         </div>
                         {open === p.address && energyData[p.address] && (
@@ -328,7 +379,7 @@ const App: React.FC = () => {
                 ))}
             </ul>
 
-            <h2 className="flex items-center gap-1 text-2xl font-bold"><FaRegChartBar/>Today’s prices</h2>
+            <h2 className="flex items-center gap-1 text-2xl font-bold"><FaRegChartBar/>Today's prices</h2>
             <div className="chart-container">
                 <Bar
                     data={{
@@ -353,6 +404,17 @@ const App: React.FC = () => {
                     }}
                 />
             </div>
+
+            <Modal
+                isOpen={timedModalPlug !== null}
+                onClose={() => setTimedModalPlug(null)}
+                title="Set Timer Duration"
+            >
+                <DurationSelector
+                    onSelect={(minutes) => timedModalPlug && timedTurnOn(timedModalPlug, minutes)}
+                    onCancel={() => setTimedModalPlug(null)}
+                />
+            </Modal>
         </div>
     )
 }

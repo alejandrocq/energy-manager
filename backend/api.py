@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import manager as m
 
 app = FastAPI()
@@ -15,6 +16,10 @@ app.add_middleware(
 )
 
 executor = ThreadPoolExecutor(max_workers=10)
+
+
+class TimedTurnOnRequest(BaseModel):
+    duration_minutes: int
 
 
 async def run_in_threadpool(func, *args, **kwargs):
@@ -93,6 +98,22 @@ async def plug_off(address: str):
         if p.address == address:
             await run_in_threadpool(p.tapo.turnOff)
             return {'address': address, 'turned_off': True}
+    raise HTTPException(404, 'not found')
+
+
+@app.post('/api/plugs/{address}/on_timed')
+async def plug_on_timed(address: str, request: TimedTurnOnRequest):
+    for p in m.get_plugs():
+        if p.address == address:
+            duration_seconds = request.duration_minutes * 60
+            await run_in_threadpool(p.tapo.turnOn)
+            await run_in_threadpool(p.tapo.turnOffWithDelay, duration_seconds)
+            return {
+                'address': address,
+                'turned_on': True,
+                'duration_minutes': request.duration_minutes,
+                'duration_seconds': duration_seconds
+            }
     raise HTTPException(404, 'not found')
 
 
