@@ -18,10 +18,6 @@ app.add_middleware(
 executor = ThreadPoolExecutor(max_workers=10)
 
 
-class TimedTurnOnRequest(BaseModel):
-    duration_minutes: int
-
-
 async def run_in_threadpool(func, *args, **kwargs):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(executor, lambda: func(*args, **kwargs))
@@ -101,17 +97,29 @@ async def plug_off(address: str):
     raise HTTPException(404, 'not found')
 
 
-@app.post('/api/plugs/{address}/on_timed')
-async def plug_on_timed(address: str, request: TimedTurnOnRequest):
+class TimerRequest(BaseModel):
+    duration_minutes: int
+    desired_state: bool  # True for ON, False for OFF
+
+
+@app.post('/api/plugs/{address}/timer')
+async def plug_timer(address: str, request: TimerRequest):
     for p in m.get_plugs():
         if p.address == address:
             duration_seconds = request.duration_minutes * 60
             await run_in_threadpool(p.cancel_countdown_rules)
-            await run_in_threadpool(p.tapo.turnOn)
-            await run_in_threadpool(p.tapo.turnOffWithDelay, duration_seconds)
+
+            if request.desired_state:
+                await run_in_threadpool(p.tapo.turnOff)
+                await run_in_threadpool(p.tapo.turnOnWithDelay, duration_seconds)
+            else:
+                await run_in_threadpool(p.tapo.turnOn)
+                await run_in_threadpool(p.tapo.turnOffWithDelay, duration_seconds)
+
             return {
                 'address': address,
-                'turned_on': True,
+                'current_state': not request.desired_state,
+                'desired_state': request.desired_state,
                 'duration_minutes': request.duration_minutes,
                 'duration_seconds': duration_seconds
             }
@@ -128,4 +136,3 @@ if __name__ == '__main__':
     import uvicorn
 
     uvicorn.run('api:app', host='0.0.0.0', port=8000, reload=True)
-

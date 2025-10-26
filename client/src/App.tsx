@@ -9,7 +9,7 @@ import {MdEnergySavingsLeaf} from "react-icons/md";
 import {FaRegChartBar} from "react-icons/fa";
 import {LuHousePlug} from "react-icons/lu";
 import {Modal} from "./Modal";
-import {DurationSelector} from "./DurationSelector";
+import {TimerSelector} from "./TimerSelector.tsx";
 
 ChartJS.register(
     CategoryScale,
@@ -206,17 +206,17 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }, [plugs, showToast, fetchPlugs])
 
-    const timedTurnOn = useCallback(async (address: string, minutes: number) => {
+    const setTimer = useCallback(async (address: string, minutes: number, desiredState: boolean) => {
         const plug = plugs.find(p => p.address === address)
         const operationKey = `timed-${address}`
 
         setPendingOperations(prev => ({...prev, [operationKey]: true}))
         setTimedModalPlug(null)
 
-        const response = await fetch(`${API}/plugs/${address}/on_timed`, {
+        const response = await fetch(`${API}/plugs/${address}/timer`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({duration_minutes: minutes})
+            body: JSON.stringify({duration_minutes: minutes, desired_state: desiredState})
         })
 
         if (response.ok) {
@@ -225,11 +225,13 @@ const App: React.FC = () => {
             const durationStr = hours > 0
                 ? `${hours}h ${mins > 0 ? mins + 'm' : ''}`
                 : `${mins}m`
-            showToast('success', `${plug?.name}: Turned ON for ${durationStr}`)
+            const stateStr = desiredState ? 'ON' : 'OFF'
+            const currentStateStr = desiredState ? 'OFF' : 'ON'
+            showToast('success', `${plug?.name}: Turned ${currentStateStr}, will turn ${stateStr} in ${durationStr}`)
             await fetchPlugs()
             if (open === address) await fetchEnergy(address)
         } else {
-            showToast('error', `${plug?.name}: Failed to turn ON with timer`)
+            showToast('error', `${plug?.name}: Failed to set timer`)
         }
 
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
@@ -408,10 +410,10 @@ const App: React.FC = () => {
             <Modal
                 isOpen={timedModalPlug !== null}
                 onClose={() => setTimedModalPlug(null)}
-                title="Set Timer Duration"
+                title="Set Timer"
             >
-                <DurationSelector
-                    onSelect={(minutes) => timedModalPlug && timedTurnOn(timedModalPlug, minutes)}
+                <TimerSelector
+                    onSelect={(minutes, desiredState) => timedModalPlug && setTimer(timedModalPlug, minutes, desiredState)}
                     onCancel={() => setTimedModalPlug(null)}
                 />
             </Modal>
