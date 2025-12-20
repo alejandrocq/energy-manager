@@ -15,6 +15,20 @@ RUN postconf -e "myhostname=postfix" && \
     postconf -e "inet_interfaces=all" && \
     postconf -e "inet_protocols=ipv4"
 
+# Copy resolv.conf and services to chroot for DNS resolution
+# Using a startup script to handle dynamic DNS
+COPY <<'EOF' /docker-entrypoint.sh
+#!/bin/bash
+set -e
+# Copy DNS resolver config to postfix chroot
+cp -f /etc/resolv.conf /var/spool/postfix/etc/resolv.conf
+cp -f /etc/services /var/spool/postfix/etc/services 2>/dev/null || true
+# Start postfix in foreground
+exec postfix start-fg
+EOF
+
+RUN chmod +x /docker-entrypoint.sh
+
 EXPOSE 25
 
-CMD ["postfix", "start-fg"]
+CMD ["/docker-entrypoint.sh"]
