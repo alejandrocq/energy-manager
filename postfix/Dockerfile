@@ -17,18 +17,10 @@ RUN postconf -e "myhostname=postfix" && \
 
 # Copy resolv.conf and services to chroot for DNS resolution
 # Using a startup script to handle dynamic DNS
-COPY <<'EOF' /docker-entrypoint.sh
-#!/bin/bash
-set -e
-# Copy DNS resolver config to postfix chroot
-cp -f /etc/resolv.conf /var/spool/postfix/etc/resolv.conf
-cp -f /etc/services /var/spool/postfix/etc/services 2>/dev/null || true
-# Start postfix in foreground
-exec postfix start-fg
-EOF
+COPY entrypoint.sh /entrypoint.sh
 
-RUN chmod +x /docker-entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 25
 
-CMD ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
