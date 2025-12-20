@@ -1,5 +1,6 @@
 services:
   client:
+    container_name: em-client
     build:
       context: ./client
       dockerfile: Dockerfile
@@ -20,6 +21,7 @@ services:
           memory: 128M
 
   backend:
+    container_name: em-backend
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -47,6 +49,7 @@ services:
           memory: 128M
 
   postfix:
+    container_name: em-postfix
     build:
       context: ./postfix
       dockerfile: Dockerfile
@@ -61,6 +64,7 @@ services:
           memory: 64M
 
   gateway:
+    container_name: em-gateway
     build:
       context: ./gateway
       dockerfile: Dockerfile
