@@ -4,8 +4,6 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-    ports:
-      - "${CLIENT_PORT:-3000}:3000"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -28,8 +26,6 @@ services:
       args:
         TZ: ${TZ:-UTC}
         USER_ID: ${USER_ID:-500}
-    ports:
-      - "${BACKEND_PORT:-3001}:8000"
     volumes:
       - "${CONFIG_PATH:-./backend/config/}:/app/config/:rw"
     depends_on:
@@ -69,7 +65,7 @@ services:
       context: ./gateway
       dockerfile: Dockerfile
     ports:
-      - "${GATEWAY_PORT:-3002}:8080"
+      - "${GATEWAY_PORT:-4000}:8080"
     volumes:
       - "./gateway/nginx.conf:/etc/nginx/nginx.conf:ro"
     depends_on:
