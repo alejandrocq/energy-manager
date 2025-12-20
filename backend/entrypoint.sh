@@ -1,9 +1,6 @@
 #!/usr/bin/env sh
 set -e
 
-# start postfix as root
-service postfix start
-
 terminate() {
   echo "Received shutdown signal, terminating processes..."
 
@@ -22,10 +19,10 @@ terminate() {
 
 trap terminate TERM INT
 
-gosu appuser python manager.py &
+python manager.py &
 ENERGY_MANAGER_PID=$!
 
-gosu appuser uvicorn api:app --host 0.0.0.0 --port 8000 &
+uvicorn api:app --host 0.0.0.0 --port 8000 &
 UVICORN_PID=$!
 
 wait

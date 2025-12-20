@@ -7,7 +7,7 @@ ARG TZ=UTC
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      gosu git tzdata postfix \
+      git tzdata \
  && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
  && echo ${TZ} > /etc/timezone \
  && rm -rf /var/lib/apt/lists/*
@@ -18,13 +18,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 COPY entrypoint.sh /entrypoint.sh
-
-ARG USER_ID=1000
-RUN useradd -u ${USER_ID} -m appuser && \
-    chown -R appuser /app
-
-USER root
 RUN chmod +x /entrypoint.sh
+
+ARG USER_ID=500
+RUN groupadd -g ${USER_ID} appgroup && \
+    useradd -u ${USER_ID} -g appgroup -m appuser && \
+    chown -R appuser:appgroup /app /entrypoint.sh
+
+USER appuser
 
 EXPOSE 8000
 

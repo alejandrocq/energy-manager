@@ -25,12 +25,40 @@ services:
       dockerfile: Dockerfile
       args:
         TZ: ${TZ:-UTC}
-        USER_ID: ${USER_ID:-1000}
+        USER_ID: ${USER_ID:-500}
     ports:
       - "${BACKEND_PORT:-3001}:8000"
     volumes:
       - "${CONFIG_PATH:-./backend/config/}:/app/config/:rw"
+    depends_on:
+      - postfix
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  postfix:
+    build:
+      context: ./postfix
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
   gateway:
     build:
