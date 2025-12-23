@@ -3,13 +3,14 @@ import './App.css'
 import {CategoryScale, Chart as ChartJS, Legend, LinearScale, BarElement, Title, Tooltip} from 'chart.js'
 import {Bar} from 'react-chartjs-2'
 import {SlClose} from "react-icons/sl";
-import {FaClock, FaPlug} from "react-icons/fa6";
+import {FaCalendar, FaClock, FaPlug} from "react-icons/fa6";
 import {ImPower} from "react-icons/im";
 import {MdEnergySavingsLeaf} from "react-icons/md";
 import {FaRegChartBar} from "react-icons/fa";
 import {LuHousePlug} from "react-icons/lu";
 import {Modal} from "./Modal";
 import {TimerSelector} from "./TimerSelector.tsx";
+import {ScheduleSelector} from "./ScheduleSelector.tsx";
 
 ChartJS.register(
     CategoryScale,
@@ -37,12 +38,24 @@ interface Period {
     target_price: number | null
 }
 
+interface ScheduledEvent {
+    id: string
+    plug_address: string
+    plug_name: string
+    target_datetime: string
+    desired_state: boolean
+    duration_seconds: number | null
+    status: string
+    created_at: string
+}
+
 interface Plug {
     enabled: boolean
     name: string
     address: string
     is_on: boolean | null
     timer_remaining: number | null
+    schedules?: ScheduledEvent[]
     periods: Period[]
     current_power?: number | null
 }
@@ -61,6 +74,26 @@ const fmtTime = (sec: number): string => {
     return `${h.toString().padStart(2, '0')}:${m
         .toString()
         .padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
+const fmtDatetime = (isoString: string): string => {
+    const date = new Date(isoString)
+    const options: Intl.DateTimeFormatOptions = {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }
+    return date.toLocaleDateString(undefined, options)
+}
+
+const fmtDuration = (seconds: number | null | undefined): string => {
+    if (!seconds || seconds === 0) return ''
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0 && m > 0) return `${h}h ${m}m`
+    if (h > 0) return `${h}h`
+    return `${m}m`
 }
 
 const ToastNotification = memo(({toast, onDismiss}: { toast: Toast, onDismiss: (id: string) => void }) => {
@@ -119,6 +152,7 @@ const App: React.FC = () => {
     const [loading, setLoading] = useState<boolean>(false)
     const [pendingOperations, setPendingOperations] = useState<Record<string, boolean>>({})
     const [timedModalPlug, setTimedModalPlug] = useState<string | null>(null)
+    const [scheduleModalPlug, setScheduleModalPlug] = useState<string | null>(null)
 
     const {showToast, ToastContainer} = useToasts();
 
@@ -237,6 +271,66 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }, [plugs, showToast, fetchPlugs, fetchEnergy, open])
 
+    const createSchedule = useCallback(async (address: string, targetDatetime: string, desiredState: boolean, durationMinutes?: number) => {
+        const plug = plugs.find(p => p.address === address)
+        const operationKey = `schedule-${address}`
+
+        setPendingOperations(prev => ({...prev, [operationKey]: true}))
+        setScheduleModalPlug(null)
+
+        const response = await fetch(`${API}/plugs/${address}/schedule`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                target_datetime: targetDatetime,
+                desired_state: desiredState,
+                duration_minutes: durationMinutes
+            })
+        })
+
+        if (response.ok) {
+            await response.json()
+            const timeStr = fmtDatetime(targetDatetime)
+            const stateStr = desiredState ? 'ON' : 'OFF'
+            let message = `${plug?.name}: Scheduled to turn ${stateStr} at ${timeStr}`
+            if (durationMinutes && durationMinutes > 0) {
+                const h = Math.floor(durationMinutes / 60)
+                const m = durationMinutes % 60
+                const durationStr = h > 0
+                    ? `${h}h ${m > 0 ? m + 'm' : ''}`
+                    : `${m}m`
+                const oppositeState = desiredState ? 'OFF' : 'ON'
+                message += ` (${oppositeState} after ${durationStr})`
+            }
+            showToast('success', message)
+            await fetchPlugs()
+        } else {
+            showToast('error', `${plug?.name}: Failed to create schedule`)
+        }
+
+        setPendingOperations(prev => ({...prev, [operationKey]: false}))
+    }, [plugs, showToast, fetchPlugs])
+
+    const deleteSchedule = useCallback(async (address: string, scheduleId: string) => {
+        const plug = plugs.find(p => p.address === address)
+        const operationKey = `delete-schedule-${scheduleId}`
+
+        setPendingOperations(prev => ({...prev, [operationKey]: true}))
+
+        const response = await fetch(`${API}/plugs/${address}/schedules/${scheduleId}`, {
+            method: 'DELETE'
+        })
+
+        if (response.ok) {
+            showToast('success', `${plug?.name}: Schedule cancelled`)
+            await fetchPlugs()
+        } else {
+            showToast('error', `${plug?.name}: Failed to cancel schedule`)
+        }
+
+        setPendingOperations(prev => ({...prev, [operationKey]: false}))
+    }, [plugs, showToast, fetchPlugs])
+
     if (loading) {
         return (
             <div className="app-container loading-container">
@@ -266,7 +360,7 @@ const App: React.FC = () => {
                             ${p.enabled ? 'bg-white' : 'opacity-60 bg-[#f8f9fa] border-[#e9ecef]'}
                         `}
                     >
-                        <div className="flex flex-col md:flex-row items-center gap-1 md:gap-2 p-[12px] cursor-pointer bg-[#f9f9f9] hover:bg-[#eef6ff]" onClick={() => expand(p.address)}>
+                        <div className="flex flex-col md:flex-row items-center gap-2 p-[12px] cursor-pointer bg-[#f9f9f9] hover:bg-[#eef6ff]" onClick={() => expand(p.address)}>
                             <span className="text-5xl md:text-2xl"><FaPlug/></span>
                             <span className="flex-1">{p.name}</span>
                             {p.timer_remaining != null && (
@@ -281,7 +375,7 @@ const App: React.FC = () => {
                             )}
                             <button
                                 className={`
-                                    w-full md:w-[90px] h-[35px] mx-1 m-2 md:m-0 bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded
+                                    w-full md:w-[90px] h-[35px] bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded
                                     text-[0.9rem] shadow-md border-none cursor-pointer
                                     transition-shadow duration-300
                                     hover:from-blue-800 hover:to-blue-900 hover:shadow-lg
@@ -315,7 +409,7 @@ const App: React.FC = () => {
                                             p.is_on ? 'On' : 'Off'}
                                     </button>
                                     <button
-                                        className="w-full md:w-[110px] h-[35px] mx-1 m-2 md:m-0 bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-purple-800 hover:to-purple-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                        className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-purple-800 hover:to-purple-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
                                         onClick={e => {
                                             e.stopPropagation()
                                             setTimedModalPlug(p.address)
@@ -331,9 +425,65 @@ const App: React.FC = () => {
                                             </>
                                         )}
                                     </button>
+                                    <button
+                                        className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-teal-500 to-teal-700 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-teal-700 hover:to-teal-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                        onClick={e => {
+                                            e.stopPropagation()
+                                            setScheduleModalPlug(p.address)
+                                        }}
+                                        disabled={pendingOperations[`schedule-${p.address}`]}
+                                    >
+                                        {pendingOperations[`schedule-${p.address}`] ? (
+                                            <span className="spinner-small"></span>
+                                        ) : (
+                                            <>
+                                                <FaCalendar className="w-3 h-3" />
+                                                <span>Schedule</span>
+                                            </>
+                                        )}
+                                    </button>
                                 </>
                             )}
                         </div>
+                        {/* Display scheduled events */}
+                        {p.schedules && p.schedules.length > 0 && (
+                            <div className="p-[12px] bg-[#e8f5e9] border-t-1 border-t-[#d1e7dd] border-t-solid text-[0.9rem]">
+                                <p className="font-semibold mb-2"><strong>Upcoming Schedules:</strong></p>
+                                <ul className="list-none p-0 m-0 space-y-1">
+                                    {p.schedules.map((schedule) => (
+                                        <li key={schedule.id} className="flex items-center justify-between bg-white rounded p-2 border border-[#d1e7dd]">
+                                            <div className="flex-1">
+                                                <FaCalendar className="inline-block mr-2 text-teal-600" />
+                                                <span className={schedule.desired_state ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
+                                                    {schedule.desired_state ? 'ON' : 'OFF'}
+                                                </span>
+                                                <span className="ml-2">{fmtDatetime(schedule.target_datetime)}</span>
+                                                {schedule.duration_seconds && (
+                                                    <span className="ml-2 text-gray-600">
+                                                        ({schedule.desired_state ? 'OFF' : 'ON'} after <FaClock className="inline-block mx-1 text-teal-600" />
+                                                        {fmtDuration(schedule.duration_seconds)})
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    deleteSchedule(p.address, schedule.id)
+                                                }}
+                                                disabled={pendingOperations[`delete-schedule-${schedule.id}`]}
+                                                className="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {pendingOperations[`delete-schedule-${schedule.id}`] ? (
+                                                    <span className="spinner-small"></span>
+                                                ) : (
+                                                    <SlClose />
+                                                )}
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         {open === p.address && energyData[p.address] && (
                             <>
                                 <div className="p-[12px] bg-[#fafafa] border-t-1 border-t-[#eee] border-t-solid border-b-1 border-b-[#eee] border-b-solid text-[0.9rem] ">
@@ -415,6 +565,16 @@ const App: React.FC = () => {
                 <TimerSelector
                     onSelect={(minutes, desiredState) => timedModalPlug && setTimer(timedModalPlug, minutes, desiredState)}
                     onCancel={() => setTimedModalPlug(null)}
+                />
+            </Modal>
+            <Modal
+                isOpen={scheduleModalPlug !== null}
+                onClose={() => setScheduleModalPlug(null)}
+                title="Schedule Plug"
+            >
+                <ScheduleSelector
+                    onSelect={(targetDatetime, desiredState, durationMinutes) => scheduleModalPlug && createSchedule(scheduleModalPlug, targetDatetime, desiredState, durationMinutes)}
+                    onCancel={() => setScheduleModalPlug(null)}
                 />
             </Modal>
         </div>

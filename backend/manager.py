@@ -1,20 +1,23 @@
 import configparser
+import json
 import os
 import smtplib
 import time
 import requests
 import logging
 import re
+import uuid
 import matplotlib.pyplot as plt
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from PyP100 import PyP100, auth_protocol, MeasureInterval
 from providers import PROVIDERS, PricesProvider
 
 CONFIG_FILE_PATH = "config/config.properties"
 CHART_FILE_NAME = "prices_chart.png"
+SCHEDULED_FILE_PATH = "scheduled.json"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -209,6 +212,174 @@ def get_plug_energy(address):
     return p.get_hourly_energy()
 
 
+def _load_scheduled_events():
+    """Load all scheduled events from JSON file."""
+    try:
+        with open(SCHEDULED_FILE_PATH, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _save_scheduled_events(events):
+    """Save scheduled events to JSON file."""
+    with open(SCHEDULED_FILE_PATH, 'w') as f:
+        json.dump(events, f, indent=2)
+
+
+def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: str, desired_state: bool, duration_seconds: int = None):
+    """Create a new scheduled event for a plug."""
+    events = _load_scheduled_events()
+
+    # Normalize target_datetime to UTC
+    target_dt = datetime.fromisoformat(target_datetime)
+    if target_dt.tzinfo is None:
+        # Assume UTC if no timezone info
+        target_dt = target_dt.replace(tzinfo=timezone.utc)
+    else:
+        # Convert to UTC
+        target_dt = target_dt.astimezone(timezone.utc)
+
+    event = {
+        'id': str(uuid.uuid4()),
+        'plug_address': plug_address,
+        'plug_name': plug_name,
+        'target_datetime': target_dt.isoformat(),  # Always stored as UTC
+        'desired_state': desired_state,  # True = ON, False = OFF
+        'duration_seconds': duration_seconds,
+        'status': 'pending',
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    events.append(event)
+    _save_scheduled_events(events)
+    logging.info(f"Created scheduled event: {event}")
+    return event
+
+
+def get_scheduled_events(plug_address: str = None):
+    """Get all scheduled events, optionally filtered by plug address."""
+    events = _load_scheduled_events()
+    if plug_address:
+        events = [e for e in events if e['plug_address'] == plug_address]
+    return [e for e in events if e['status'] == 'pending']
+
+
+def delete_scheduled_event(event_id: str):
+    """Delete a scheduled event by ID."""
+    events = _load_scheduled_events()
+    for event in events:
+        if event['id'] == event_id:
+            event['status'] = 'cancelled'
+            event['cancelled_at'] = datetime.now(timezone.utc).isoformat()
+            logging.info(f"Cancelled scheduled event: {event}")
+            _save_scheduled_events(events)
+            return True
+    return False
+
+
+def process_scheduled_events(plugs: list[Plug], manager_from_email: str, manager_to_email: str):
+    """Process pending scheduled events and execute if time has arrived."""
+    events = _load_scheduled_events()
+    now = datetime.now(timezone.utc)
+    modified = False
+
+    for event in events:
+        if event['status'] != 'pending':
+            continue
+
+        target_dt = datetime.fromisoformat(event['target_datetime'])
+
+        if target_dt <= now:
+            # Time to execute
+            plug_address = event['plug_address']
+            plug_name = event.get('plug_name', 'Unknown')
+            desired_state = event.get('desired_state', True)  # Default to ON for backward compatibility
+
+            # Find the plug
+            plug = next((p for p in plugs if p.address == plug_address), None)
+            if plug:
+                try:
+                    # Cancel all countdown timers first to avoid Tapo API errors
+                    plug.cancel_countdown_rules()
+
+                    # Turn plug to desired state
+                    if desired_state:
+                        plug.tapo.turnOn()
+                        state_str = "ON"
+                    else:
+                        plug.tapo.turnOff()
+                        state_str = "OFF"
+
+                    logging.info(f"Executed scheduled event for {plug_name} at {now}: turned {state_str}")
+
+                    # If duration specified, set opposite state timer
+                    duration_seconds = event.get('duration_seconds')
+                    if duration_seconds and duration_seconds > 0:
+                        if desired_state:
+                            plug.tapo.turnOffWithDelay(duration_seconds)
+                            logging.info(f"Plug {plug_name} will turn OFF in {timedelta(seconds=duration_seconds)}")
+                        else:
+                            plug.tapo.turnOnWithDelay(duration_seconds)
+                            logging.info(f"Plug {plug_name} will turn ON in {timedelta(seconds=duration_seconds)}")
+
+                    # Send email notification
+                    email_message = f"🔌 Plug {plug_name} has been turned {state_str} per scheduled event at {now}."
+                    if duration_seconds and duration_seconds > 0:
+                        opposite_state = "OFF" if desired_state else "ON"
+                        email_message += f"<br>It will turn {opposite_state} in {timedelta(seconds=duration_seconds)}."
+                    send_email(
+                        f"🔌 Plug {plug_name} scheduled {state_str} executed",
+                        email_message,
+                        manager_from_email,
+                        manager_to_email
+                    )
+
+                    event['status'] = 'completed'
+                    event['executed_at'] = now.isoformat()
+                    modified = True
+
+                except Exception as err:
+                    logging.error(f"Error executing scheduled event for {plug_name}: {err}")
+                    event['status'] = 'failed'
+                    event['error'] = str(err)
+                    event['failed_at'] = now.isoformat()
+                    modified = True
+            else:
+                logging.error(f"Plug {plug_address} not found for scheduled event")
+                event['status'] = 'failed'
+                event['error'] = 'Plug not found'
+                event['failed_at'] = now.isoformat()
+                modified = True
+
+    if modified:
+        _save_scheduled_events(events)
+
+    # Clean up old completed/cancelled events (older than 7 days)
+    _cleanup_old_events()
+
+
+def _cleanup_old_events():
+    """Remove old completed/cancelled events from storage."""
+    events = _load_scheduled_events()
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=7)
+
+    active_events = []
+    for e in events:
+        if e['status'] == 'pending':
+            active_events.append(e)
+            continue
+
+        event_dt = datetime.fromisoformat(e.get('created_at') or e.get('cancelled_at') or e.get('executed_at') or now.isoformat())
+
+        if event_dt > cutoff:
+            active_events.append(e)
+
+    if len(active_events) != len(events):
+        _save_scheduled_events(active_events)
+        logging.info(f"Cleaned up {len(events) - len(active_events)} old scheduled events")
+
+
 if __name__ == '__main__':
     last_config_mtime = None
     target_date = None
@@ -334,6 +505,10 @@ if __name__ == '__main__':
                             logging.info("Successfully re-initialized plug protocol")
                         except Exception as err:
                             logging.error(f"Failed to re-initialize plug protocol: {err}")
+
+        # Process scheduled events
+        if manager_from_email and manager_to_email:
+            process_scheduled_events(plugs, manager_from_email, manager_to_email)
 
         try:
             time.sleep(30)

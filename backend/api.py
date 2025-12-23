@@ -27,6 +27,7 @@ async def run_in_threadpool(func, *args, **kwargs):
 async def plugs():
     out = []
     prices = await run_in_threadpool(m.get_provider().get_prices, datetime.now())
+    all_schedules = await run_in_threadpool(m.get_scheduled_events)
     for p in m.get_plugs():
         try:
             st = await run_in_threadpool(p.tapo.get_status)
@@ -39,12 +40,16 @@ async def plugs():
             tr = None
             current_power = None
 
+        # Get schedules for this plug
+        schedules = [s for s in all_schedules if s['plug_address'] == p.address]
+
         out.append({
             'name': p.name,
             'address': p.address,
             'enabled': p.enabled,
             'is_on': st,
             'timer_remaining': tr,
+            'schedules': schedules,
             'periods': [
                 {
                     'start_hour': per['start_hour'],
@@ -130,6 +135,43 @@ async def plug_timer(address: str, request: TimerRequest):
 async def get_prices():
     data = await run_in_threadpool(m.get_provider().get_prices, datetime.now())
     return [{'hour': h, 'value': p} for h, p in data]
+
+
+class ScheduleRequest(BaseModel):
+    target_datetime: str  # ISO format datetime string
+    desired_state: bool  # True = turn ON, False = turn OFF
+    duration_minutes: int | None = None  # Optional duration in minutes
+
+
+@app.post('/api/plugs/{address}/schedule')
+async def create_schedule(address: str, request: ScheduleRequest):
+    for p in m.get_plugs():
+        if p.address == address:
+            duration_seconds = request.duration_minutes * 60 if request.duration_minutes else None
+            event = await run_in_threadpool(
+                m.create_scheduled_event,
+                address,
+                p.name,
+                request.target_datetime,
+                request.desired_state,
+                duration_seconds
+            )
+            return event
+    raise HTTPException(404, 'Plug not found')
+
+
+@app.get('/api/plugs/{address}/schedules')
+async def get_schedules(address: str):
+    schedules = await run_in_threadpool(m.get_scheduled_events, address)
+    return schedules
+
+
+@app.delete('/api/plugs/{address}/schedules/{schedule_id}')
+async def delete_schedule(address: str, schedule_id: str):
+    deleted = await run_in_threadpool(m.delete_scheduled_event, schedule_id)
+    if deleted:
+        return {'status': 'success', 'schedule_id': schedule_id}
+    raise HTTPException(404, 'Schedule not found')
 
 
 if __name__ == '__main__':
