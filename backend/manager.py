@@ -18,16 +18,17 @@ from providers import PROVIDERS, PricesProvider
 CONFIG_FILE_PATH = "config/config.properties"
 CHART_FILE_NAME = "prices_chart.png"
 SCHEDULED_FILE_PATH = "data/schedules.json"
+PLUG_STATES_FILE_PATH = "data/plug_states.json"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 config = configparser.ConfigParser()
 
 class Plug:
-    def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str):
+    def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str, enabled: bool = True):
         self.name = plug_config.get('name')
         self.address = plug_config.get('address')
-        self.enabled = plug_config.getboolean('enabled', fallback=False)
+        self.enabled = enabled
         self.tapo = PyP100.Switchable(self.address, email, password)
 
         periods_temp = {}
@@ -175,20 +176,31 @@ def send_email(subject, content, from_email, to_email, attach_chart=False):
 
 
 def toggle_plug_enabled(address: str):
+    # Load current states
+    states = _load_plug_states()
+
+    # Check if plug exists
+    plug_exists = False
     for section in config.sections():
         if section.startswith("plug") and config[section].get('address') == address:
-            current = config.getboolean(section, 'enabled', fallback=True)
+            plug_exists = True
+            break
 
-            for plug in get_plugs():
-                if plug.address == address:
-                    plug.tapo.turnOff()
-                    break
+    if not plug_exists:
+        raise ValueError("Plug not found")
 
-            config.set(section, 'enabled', str(not current).lower())
-            with open(CONFIG_FILE_PATH, 'w') as configfile:
-                config.write(configfile)
-            return
-    raise ValueError("Plug not found")
+    # Get current state (default to True if not found)
+    current = states.get(address, True)
+
+    # Turn plug off
+    for plug in get_plugs():
+        if plug.address == address:
+            plug.tapo.turnOff()
+            break
+
+    # Save new state
+    states[address] = not current
+    _save_plug_states(states)
 
 
 def get_plugs(enabled_only=False) -> list[Plug]:
@@ -197,8 +209,11 @@ def get_plugs(enabled_only=False) -> list[Plug]:
     tapo_password = config.get('credentials', 'tapo_password')
     out = []
     for section in config.sections():
-        if section.startswith("plug") and (not enabled_only or config.getboolean(section, 'enabled', fallback=False)):
-            out.append(Plug(config[section], tapo_email, tapo_password))
+        if section.startswith("plug"):
+            address = config[section].get('address')
+            enabled = is_plug_enabled(address)
+            if (not enabled_only) or enabled:
+                out.append(Plug(config[section], tapo_email, tapo_password, enabled))
     return out
 
 
@@ -380,8 +395,31 @@ def _cleanup_old_events():
         logging.info(f"Cleaned up {len(events) - len(active_events)} old scheduled events")
 
 
+def _load_plug_states():
+    """Load plug enabled/disabled states from JSON file."""
+    try:
+        with open(PLUG_STATES_FILE_PATH, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_plug_states(states):
+    """Save plug states to JSON file."""
+    with open(PLUG_STATES_FILE_PATH, 'w') as f:
+        json.dump(states, f, indent=2)
+
+
+def is_plug_enabled(address: str) -> bool:
+    """Check if a plug is enabled based on its address."""
+    states = _load_plug_states()
+    # Default to True if not found (backward compatibility)
+    return states.get(address, True)
+
+
 if __name__ == '__main__':
     last_config_mtime = None
+    last_states_mtime = None
     target_date = None
 
     manager_from_email = None
@@ -391,15 +429,33 @@ if __name__ == '__main__':
 
     while True:
         current_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)
-        if current_config_mtime != last_config_mtime:
-            logging.info(f"{CONFIG_FILE_PATH} changed, recalculating prices...")
-            last_config_mtime = current_config_mtime
-            config.read(CONFIG_FILE_PATH)
-            manager_from_email = config.get('email', 'from_email')
-            manager_to_email = config.get('email', 'to_email')
-            provider = get_provider()
+
+        # Check if plug_states.json exists and get its mtime
+        try:
+            current_states_mtime = os.path.getmtime(PLUG_STATES_FILE_PATH)
+        except FileNotFoundError:
+            current_states_mtime = None
+
+        # Reload if config or plug states have changed
+        config_changed = current_config_mtime != last_config_mtime
+        states_changed = current_states_mtime != last_states_mtime
+
+        if config_changed or states_changed:
+            if config_changed:
+                logging.info(f"{CONFIG_FILE_PATH} changed, recalculating prices...")
+                last_config_mtime = current_config_mtime
+                config.read(CONFIG_FILE_PATH)
+                manager_from_email = config.get('email', 'from_email')
+                manager_to_email = config.get('email', 'to_email')
+                provider = get_provider()
+                target_date = None  # Force reloading prices
+
+            if states_changed:
+                logging.info(f"{PLUG_STATES_FILE_PATH} changed, reloading plugs...")
+                last_states_mtime = current_states_mtime
+
+            # Always reload plugs when either file changes
             plugs = get_plugs(True)
-            target_date = None  # Force reloading prices
 
         if (target_date is None or target_date.date() != datetime.now().date()) and not provider.unavailable():
             target_date = datetime.now()
