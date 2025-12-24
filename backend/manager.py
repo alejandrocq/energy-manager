@@ -17,7 +17,7 @@ from providers import PROVIDERS, PricesProvider
 
 CONFIG_FILE_PATH = "config/config.properties"
 CHART_FILE_NAME = "prices_chart.png"
-SCHEDULED_FILE_PATH = "scheduled.json"
+SCHEDULED_FILE_PATH = "data/schedules.json"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
