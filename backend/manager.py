@@ -12,6 +12,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from PyP100 import PyP100, auth_protocol, MeasureInterval
 from providers import PROVIDERS, PricesProvider
 
@@ -237,8 +238,18 @@ def _save_scheduled_events(events):
         json.dump(events, f, indent=2)
 
 
-def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: str, desired_state: bool, duration_seconds: int | None = None):
-    """Create a new scheduled event for a plug."""
+def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: str, desired_state: bool, duration_seconds: int | None = None, event_type: str = "manual", source_period: int | None = None):
+    """Create a new scheduled event for a plug.
+
+    Args:
+        plug_address: IP address of the plug
+        plug_name: Name of the plug
+        target_datetime: When to execute (ISO format string)
+        desired_state: True = turn ON, False = turn OFF
+        duration_seconds: How long to stay in desired state before reverting
+        event_type: "manual" (user-created) or "automatic" (price-based)
+        source_period: For automatic events, which period index generated it
+    """
     events = _load_scheduled_events()
 
     # Normalize target_datetime to UTC
@@ -257,12 +268,14 @@ def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: s
         'target_datetime': target_dt.isoformat(),  # Always stored as UTC
         'desired_state': desired_state,  # True = ON, False = OFF
         'duration_seconds': duration_seconds,
+        'type': event_type,  # "manual" or "automatic"
+        'source_period': source_period,  # For automatic events
         'status': 'pending',
         'created_at': datetime.now(timezone.utc).isoformat()
     }
     events.append(event)
     _save_scheduled_events(events)
-    logging.info(f"Created scheduled event: {event}")
+    logging.info(f"Created {event_type} scheduled event: {event}")
     return event
 
 
@@ -411,6 +424,100 @@ def is_plug_enabled(address: str) -> bool:
     return states.get(address, True)
 
 
+def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, float]], target_date: datetime):
+    """Generate automatic schedules for all enabled plugs based on electricity prices.
+
+    This function:
+    1. Clears existing pending automatic schedules
+    2. For each enabled plug (automatic mode):
+       - Calculates cheapest hour in each configured period
+       - Creates schedule to turn plug ON at that hour
+       - Duration is set to the period's runtime
+
+    Args:
+        plugs: List of Plug objects
+        prices: List of (hour, price) tuples for the target date
+        target_date: The date these schedules are for
+    """
+    events = _load_scheduled_events()
+
+    # Remove existing pending automatic schedules for today/future
+    now = datetime.now(timezone.utc)
+    events = [
+        e for e in events
+        if not (e.get('type') == 'automatic' and e['status'] == 'pending' and datetime.fromisoformat(e['target_datetime']) >= now)
+    ]
+
+    # Generate new automatic schedules
+    for plug in plugs:
+        if not plug.enabled:
+            logging.info(f"Skipping automatic schedule generation for {plug.name} (manual mode)")
+            continue
+
+        plug.calculate_target_hours(prices)
+
+        for period_idx, period in enumerate(plug.periods):
+            target = period.get('target')
+            if not target:
+                continue
+
+            target_hour, target_price = target
+            runtime_seconds = period['runtime_seconds']
+
+            if runtime_seconds <= 0:
+                continue
+
+            # Create datetime for the target hour on target_date
+            # Prices are in local time, so create datetime in local timezone first
+            # Read system timezone from /etc/timezone (set during Docker build)
+            try:
+                with open('/etc/timezone', 'r') as f:
+                    system_tz = f.read().strip()
+                local_tz = ZoneInfo(system_tz)
+            except (FileNotFoundError, Exception):
+                # Fallback to UTC if /etc/timezone doesn't exist
+                local_tz = timezone.utc
+
+            target_dt_local = datetime(
+                target_date.year,
+                target_date.month,
+                target_date.day,
+                target_hour,
+                0,  # minute
+                0,  # second
+                tzinfo=local_tz
+            )
+            # Convert to UTC for storage
+            target_dt = target_dt_local.astimezone(timezone.utc)
+
+            # Skip if target time is in the past
+            if target_dt < now:
+                logging.info(f"Skipping past schedule for {plug.name} period {period_idx+1} at {target_dt}")
+                continue
+
+            # Create automatic schedule event
+            event = {
+                'id': str(uuid.uuid4()),
+                'plug_address': plug.address,
+                'plug_name': plug.name,
+                'target_datetime': target_dt.isoformat(),
+                'desired_state': True,  # Turn ON at cheapest hour
+                'duration_seconds': runtime_seconds,
+                'type': 'automatic',
+                'source_period': period_idx,
+                'status': 'pending',
+                'created_at': now.isoformat()
+            }
+            events.append(event)
+            logging.info(
+                f"Created automatic schedule for {plug.name} period {period_idx+1}: "
+                f"{target_hour}h ({target_price} €/kWh) for {timedelta(seconds=runtime_seconds)}"
+            )
+
+    _save_scheduled_events(events)
+    logging.info(f"Generated automatic schedules for {target_date.date()}")
+
+
 if __name__ == '__main__':
     last_config_mtime = None
     last_states_mtime = None
@@ -511,50 +618,9 @@ if __name__ == '__main__':
                 True
             )
             logging.info(f"Successfully downloaded prices data for {target_date.date()} and sent email.")
-        else:
-            for plug in plugs:
-                try:
-                    runtime = plug.runtime_seconds()
-                    if runtime > 0:
-                        if not plug.tapo.get_status():
-                            plug.tapo.turnOn()
-                            plug.tapo.turnOffWithDelay(runtime)
-                            logging.info(
-                                f"Plug {plug.name} enabled at {datetime.now()} for {timedelta(seconds=runtime)}"
-                            )
-                            send_email(
-                                f"🔌 Plug {plug.name} enabled",
-                                f"🔌 Plug {plug.name} has been enabled for {timedelta(seconds=runtime)}.",
-                                manager_from_email,
-                                manager_to_email
-                            )
-                    else:
-                        if plug.tapo.get_status() and plug.get_rule_remain_seconds() is None:
-                            default_runtime = plug.periods[0]['runtime_seconds'] if plug.periods else 0
-                            if default_runtime == 0:
-                                continue
 
-                            plug.tapo.turnOffWithDelay(default_runtime)
-                            logging.info(
-                                f"Plug {plug.name} is on outside cheapest hours, "
-                                f"scheduled turn-off in {timedelta(seconds=default_runtime)}"
-                            )
-                            send_email(
-                                f"🔌 Plug {plug.name} scheduled turn off",
-                                f"Plug {plug.name} was on outside cheapest hours and will be turned off in "
-                                f"{timedelta(seconds=default_runtime)}.",
-                                manager_from_email,
-                                manager_to_email
-                            )
-                except Exception as err:
-                    logging.error(f"Error while processing plug {plug.name}: {err}")
-                    if isinstance(plug.tapo.protocol, auth_protocol.AuthProtocol):
-                        try:
-                            plug.tapo.protocol.session = requests.Session()
-                            plug.tapo.protocol.Initialize()
-                            logging.info("Successfully re-initialized plug protocol")
-                        except Exception as err:
-                            logging.error(f"Failed to re-initialize plug protocol: {err}")
+            # Generate automatic schedules for enabled plugs
+            generate_automatic_schedules(plugs, hourly_prices, target_date)
 
         # Process scheduled events
         if manager_from_email and manager_to_email:

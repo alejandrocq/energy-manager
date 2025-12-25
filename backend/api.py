@@ -174,6 +174,29 @@ async def delete_schedule(address: str, schedule_id: str):
     raise HTTPException(404, 'Schedule not found')
 
 
+@app.post('/api/recalculate_schedules')
+async def recalculate_schedules():
+    """Force recalculation of automatic schedules based on current prices."""
+    try:
+        target_date = datetime.now()
+        provider = await run_in_threadpool(m.get_provider)
+        prices = await run_in_threadpool(provider.get_prices, target_date)
+
+        if not prices:
+            raise HTTPException(500, 'No price data available')
+
+        plugs = await run_in_threadpool(m.get_plugs, False)
+        await run_in_threadpool(m.generate_automatic_schedules, plugs, prices, target_date)
+
+        return {
+            'status': 'success',
+            'message': f'Automatic schedules recalculated for {target_date.date()}',
+            'schedules_count': len(await run_in_threadpool(m.get_scheduled_events))
+        }
+    except Exception as e:
+        raise HTTPException(500, f'Failed to recalculate schedules: {str(e)}')
+
+
 if __name__ == '__main__':
     import uvicorn
 

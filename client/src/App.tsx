@@ -46,6 +46,7 @@ interface ScheduledEvent {
     target_datetime: string
     desired_state: boolean
     duration_seconds: number | null
+    type?: string  // "automatic" or "manual"
     status: string
     created_at: string
 }
@@ -426,6 +427,15 @@ const App: React.FC = () => {
                                             className="flex items-center justify-between bg-white rounded p-2 border border-[#d1e7dd]">
                                             <div className="flex-1">
                                                 <FaCalendar className="inline-block mr-2 text-teal-600"/>
+                                                {schedule.type === 'automatic' ? (
+                                                    <span className="inline-block px-2 py-0.5 mr-2 text-xs font-semibold text-blue-700 bg-blue-100 rounded">
+                                                        Auto
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-block px-2 py-0.5 mr-2 text-xs font-semibold text-purple-700 bg-purple-100 rounded">
+                                                        Manual
+                                                    </span>
+                                                )}
                                                 <span className={schedule.desired_state ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
                                                     {schedule.desired_state ? 'ON' : 'OFF'}
                                                 </span>
