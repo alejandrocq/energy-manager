@@ -78,9 +78,10 @@ async def toggle_enable(address: str):
     try:
         await run_in_threadpool(m.toggle_plug_enabled, address)
 
-        # If plug is now in automatic mode, regenerate schedules
+        # Handle schedule management based on new mode
         is_enabled = await run_in_threadpool(m.is_plug_enabled, address)
         if is_enabled:
+            # Plug switched to automatic mode - regenerate schedules
             try:
                 target_date = datetime.now()
                 provider = await run_in_threadpool(m.get_provider)
@@ -92,6 +93,13 @@ async def toggle_enable(address: str):
             except Exception as e:
                 # Log error but don't fail the toggle operation
                 print(f"Warning: Failed to regenerate schedules: {e}")
+        else:
+            # Plug switched to manual mode - clear automatic schedules
+            try:
+                await run_in_threadpool(m.clear_automatic_schedules, address)
+            except Exception as e:
+                # Log error but don't fail the toggle operation
+                print(f"Warning: Failed to clear schedules: {e}")
 
         return {'status': 'success', 'enabled': is_enabled}
     except ValueError as e:

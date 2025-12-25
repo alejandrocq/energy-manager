@@ -238,6 +238,28 @@ def _save_scheduled_events(events):
         json.dump(events, f, indent=2)
 
 
+def clear_automatic_schedules(plug_address: str):
+    """Clear all pending automatic schedules for a specific plug.
+
+    Args:
+        plug_address: IP address of the plug
+    """
+    events = _load_scheduled_events()
+    now = datetime.now(timezone.utc)
+
+    # Filter out pending automatic schedules for this plug
+    events = [
+        e for e in events
+        if not (e.get('plug_address') == plug_address and
+                e.get('type') == 'automatic' and
+                e['status'] == 'pending' and
+                datetime.fromisoformat(e['target_datetime']) >= now)
+    ]
+
+    _save_scheduled_events(events)
+    logging.info(f"Cleared automatic schedules for {plug_address}")
+
+
 def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: str, desired_state: bool, duration_seconds: int | None = None, event_type: str = "manual", source_period: int | None = None):
     """Create a new scheduled event for a plug.
 
