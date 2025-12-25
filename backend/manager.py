@@ -1,12 +1,19 @@
+from __future__ import annotations
+
 import configparser
 import json
 import os
 import smtplib
+import threading
 import time
 import requests
 import logging
 import re
 import uuid
+
+# Set matplotlib backend to non-GUI before importing pyplot
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
@@ -24,6 +31,54 @@ PLUG_STATES_FILE_PATH = "data/plug_states.json"
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 config = configparser.ConfigParser()
+
+
+class PlugManager:
+    """Manages shared plug instances that are used by both API and manager thread."""
+
+    def __init__(self):
+        self._plugs: list[Plug] = []
+        self._lock = threading.Lock()
+
+    def reload_plugs(self, enabled_only=False):
+        """Reload plugs from config file. Thread-safe."""
+        config.read(CONFIG_FILE_PATH)
+        tapo_email = config.get('credentials', 'tapo_email')
+        tapo_password = config.get('credentials', 'tapo_password')
+        new_plugs = []
+
+        for section in config.sections():
+            if section.startswith("plug"):
+                address = config[section].get('address')
+                if not address:
+                    continue
+                enabled = is_plug_enabled(address)
+                if (not enabled_only) or enabled:
+                    new_plugs.append(Plug(config[section], tapo_email, tapo_password, enabled))
+
+        with self._lock:
+            self._plugs = new_plugs
+
+        logging.info(f"Reloaded {len(new_plugs)} plugs from config")
+
+    def get_plugs(self, enabled_only=False) -> list[Plug]:
+        """Get current plugs. Thread-safe read."""
+        with self._lock:
+            if enabled_only:
+                return [p for p in self._plugs if p.enabled]
+            return self._plugs.copy()
+
+    def get_plug_by_address(self, address: str) -> Plug | None:
+        """Get a specific plug by address. Thread-safe."""
+        with self._lock:
+            for p in self._plugs:
+                if p.address == address:
+                    return p
+        return None
+
+
+# Global plug manager instance (shared between API and manager thread)
+plug_manager = PlugManager()
 
 class Plug:
     def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str, enabled: bool = True):
@@ -197,20 +252,8 @@ def toggle_plug_enabled(address: str):
 
 
 def get_plugs(enabled_only=False) -> list[Plug]:
-    """Get plugs. If enabled_only=True, returns only plugs in automatic mode."""
-    config.read(CONFIG_FILE_PATH)
-    tapo_email = config.get('credentials', 'tapo_email')
-    tapo_password = config.get('credentials', 'tapo_password')
-    out = []
-    for section in config.sections():
-        if section.startswith("plug"):
-            address = config[section].get('address')
-            if not address:
-                continue
-            enabled = is_plug_enabled(address)
-            if (not enabled_only) or enabled:
-                out.append(Plug(config[section], tapo_email, tapo_password, enabled))
-    return out
+    """Get plugs from shared plug manager. If enabled_only=True, returns only plugs in automatic mode."""
+    return plug_manager.get_plugs(enabled_only)
 
 
 def get_provider():
@@ -219,7 +262,9 @@ def get_provider():
 
 
 def get_plug_energy(address):
-    p: Plug = next(x for x in get_plugs() if x.address == address)
+    p = plug_manager.get_plug_by_address(address)
+    if not p:
+        raise ValueError(f"Plug with address {address} not found")
     return p.get_hourly_energy()
 
 
@@ -322,7 +367,7 @@ def delete_scheduled_event(event_id: str):
     return False
 
 
-def process_scheduled_events(plugs: list[Plug], manager_from_email: str, manager_to_email: str):
+def process_scheduled_events(manager_from_email: str, manager_to_email: str):
     """Process pending scheduled events and execute if time has arrived."""
     events = _load_scheduled_events()
     now = datetime.now(timezone.utc)
@@ -340,8 +385,8 @@ def process_scheduled_events(plugs: list[Plug], manager_from_email: str, manager
             plug_name = event.get('plug_name', 'Unknown')
             desired_state = event.get('desired_state', True)  # Default to ON for backward compatibility
 
-            # Find the plug
-            plug = next((p for p in plugs if p.address == plug_address), None)
+            # Find the plug from shared plug manager
+            plug = plug_manager.get_plug_by_address(plug_address)
             if plug:
                 try:
                     # Cancel all countdown timers first to avoid Tapo API errors
@@ -540,7 +585,14 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
     logging.info(f"Generated automatic schedules for {target_date.date()}")
 
 
-if __name__ == '__main__':
+def run_manager_main(stop_event=None):
+    """Run the manager main loop.
+
+    Args:
+        stop_event: Optional threading.Event to signal graceful shutdown.
+                   If None, runs indefinitely (for standalone execution).
+                   If provided, checks stop_event.is_set() for shutdown.
+    """
     last_config_mtime = None
     last_states_mtime = None
     target_date = None
@@ -548,9 +600,10 @@ if __name__ == '__main__':
     manager_from_email = None
     manager_to_email = None
     provider: PricesProvider | None = None
-    plugs = []
 
-    while True:
+    should_continue = lambda: True if stop_event is None else not stop_event.is_set()
+
+    while should_continue():
         current_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)
 
         # Check if plug_states.json exists and get its mtime
@@ -577,8 +630,8 @@ if __name__ == '__main__':
                 logging.info(f"{PLUG_STATES_FILE_PATH} changed, reloading plugs...")
                 last_states_mtime = current_states_mtime
 
-            # Always reload plugs when either file changes
-            plugs = get_plugs(False)
+            # Always reload shared plugs when either file changes
+            plug_manager.reload_plugs(enabled_only=False)
 
         if provider and (target_date is None or target_date.date() != datetime.now().date()) and not provider.unavailable():
             target_date = datetime.now()
@@ -596,6 +649,8 @@ if __name__ == '__main__':
             for hour, price in hourly_prices:
                 email_message += f"⏱️💶 {hour}h: {price} €/kWh<br>"
 
+            # Get shared plugs for daily email and schedule generation
+            plugs = get_plugs(enabled_only=False)
             for plug in plugs:
                 plug.calculate_target_hours(hourly_prices)
 
@@ -644,12 +699,23 @@ if __name__ == '__main__':
             # Generate automatic schedules for enabled plugs
             generate_automatic_schedules(plugs, hourly_prices, target_date)
 
-        # Process scheduled events
+        # Process scheduled events (uses shared plug manager)
         if manager_from_email and manager_to_email:
-            process_scheduled_events(plugs, manager_from_email, manager_to_email)
+            process_scheduled_events(manager_from_email, manager_to_email)
 
-        try:
-            time.sleep(30)
-        except KeyboardInterrupt:
-            logging.info("Exiting…")
-            break
+        # Sleep for 30 seconds, checking stop_event every second if provided
+        if stop_event is None:
+            try:
+                time.sleep(30)
+            except KeyboardInterrupt:
+                logging.info("Exiting…")
+                break
+        else:
+            for _ in range(30):
+                if stop_event.is_set():
+                    break
+                stop_event.wait(1)
+
+
+if __name__ == '__main__':
+    run_manager_main()

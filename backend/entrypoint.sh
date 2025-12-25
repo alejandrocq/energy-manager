@@ -2,27 +2,20 @@
 set -e
 
 terminate() {
-  echo "Received shutdown signal, terminating processes..."
+  echo "Received shutdown signal, terminating backend process..."
 
-  if [ -n "$ENERGY_MANAGER_PID" ]; then
-    kill -TERM $ENERGY_MANAGER_PID
-  fi
-
-  if [ -n "$UVICORN_PID" ]; then
-    kill -TERM $UVICORN_PID
+  if [ -n "$BACKEND_PID" ]; then
+    kill -TERM $BACKEND_PID
   fi
 
   wait
-  echo "All processes terminated, exiting."
+  echo "Backend process terminated, exiting."
   exit 0
 }
 
 trap terminate TERM INT
 
-python manager.py &
-ENERGY_MANAGER_PID=$!
-
-uvicorn api:app --host 0.0.0.0 --port 8000 &
-UVICORN_PID=$!
+python app.py --host 0.0.0.0 --port 8000 &
+BACKEND_PID=$!
 
 wait

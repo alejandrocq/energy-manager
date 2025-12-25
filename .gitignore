@@ -5,3 +5,5 @@ config.properties
 *.png
 !docs/*.png
 data/
+__pycache__/
+*.pyc

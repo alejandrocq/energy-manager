@@ -2,16 +2,16 @@
 
 ## Commands
 
-**Dev mode (recommended for iteration):** `./dev.sh` (starts manager, API, and frontend, then exits)
+**Dev mode (recommended for iteration):** `./dev.sh` (starts unified backend and frontend, then exits)
 - Returns PIDs and log paths in machine-readable format for programmatic control
 - Logs are written to `/tmp/energy-manager-dev/` with separate files for each service
-- To stop services: `kill $MANAGER_PID $API_PID $FRONTEND_PID`
-- Log files: `manager.log`, `api.log`, `frontend.log`, `dev.log`
+- To stop services: `kill $BACKEND_PID $FRONTEND_PID`
+- Log files: `backend.log`, `frontend.log`, `dev.log`
 
 **Manual dev setup:**
 - Backend: `cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
-- Manager: `python manager.py` (runs price fetching, automatic schedules, scheduled events)
-- API: `uvicorn api:app --reload` (handles HTTP requests on port 8000)
+- Backend (unified): `python app.py --reload` (runs API + Manager in single process)
+- Backend (production): `python app.py --host 0.0.0.0 --port 8000`
 - Frontend: `cd client && npm install && npm run dev` (Vite dev server proxies /api to backend)
 
 **Lint:** `cd client && npm run lint`
@@ -23,15 +23,21 @@
 
 For faster iteration, run services locally instead of Docker:
 
-1. Use `./dev.sh` to start all services (manager, API, frontend)
+1. Use `./dev.sh` to start all services (unified backend, frontend)
 2. Frontend (Vite) proxies `/api` to backend API at http://localhost:8000
 3. Ensure backend config and data directories exist with Tapo credentials and pricing provider config
 
-**Backend components:**
-- **Manager** (manager.py): Runs price fetching, sends daily email notifications, generates automatic schedules for enabled plugs, executes scheduled events (turns plugs on/off at specified times)
-- **API** (uvicorn api:app): Handles HTTP requests from frontend - manual plug control (on/off/timer), price/energy/schedule queries
+**Backend (app.py):**
+- Unified entry point that runs both API and Manager in a single process
+- **Manager** runs in background thread: price fetching, daily email notifications, automatic schedule generation, scheduled event execution
+- **API** runs on uvicorn: handles HTTP requests for manual plug control (on/off/timer), price/energy/schedule queries
+- Uses FastAPI lifespan events to start/stop manager thread
 
-**Note:** Running only `uvicorn api:app` works for manual control and reading prices, but you lose automatic schedules and scheduled event execution.
+**Benefits of unified backend:**
+- Single process to manage (one PID)
+- Shared in-memory state (no file-based race conditions)
+- Easier debugging - all logs in one place
+- Better coordination between API and Manager (no concurrent device access issues)
 
 **Testing with Chrome DevTools:**
 If Chrome DevTools are available, you can test the application by:
@@ -45,7 +51,7 @@ No tests currently configured. When adding tests, set up a test framework (pytes
 
 ## Python Code Style
 
-**Organization:** Follow patterns in `backend/api.py` and `backend/manager.py`.
+**Organization:** Follow patterns in `backend/app.py` and `backend/manager.py`.
 
 **Imports:** Standard library → third-party → local modules (alphabetical within each group). Use `from module import` for commonly used items, `import module` for others.
 

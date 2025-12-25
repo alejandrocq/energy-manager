@@ -13,8 +13,7 @@ FRONTEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/client" && pwd)"
 # Log file setup
 LOG_DIR="/tmp/energy-manager-dev"
 mkdir -p "$LOG_DIR"
-MANAGER_LOG="$LOG_DIR/manager.log"
-API_LOG="$LOG_DIR/api.log"
+BACKEND_LOG="$LOG_DIR/backend.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 MAIN_LOG="$LOG_DIR/dev.log"
 
@@ -58,20 +57,14 @@ kill_existing 5173
 
 echo -e "${GREEN}Starting Energy Manager in development mode...${NC}" | tee -a "$MAIN_LOG"
 
-# Start manager
-echo -e "${GREEN}[1/3] Starting manager...${NC}" | tee -a "$MAIN_LOG"
+# Start unified backend (API + Manager)
+echo -e "${GREEN}[1/2] Starting backend (API + Manager)...${NC}" | tee -a "$MAIN_LOG"
 cd "$BACKEND_DIR"
-python manager.py >> "$MANAGER_LOG" 2>&1 &
-MANAGER_PID=$!
-
-# Start API
-echo -e "${GREEN}[2/3] Starting API server (uvicorn)...${NC}" | tee -a "$MAIN_LOG"
-cd "$BACKEND_DIR"
-uvicorn api:app --reload --host 0.0.0.0 --port 8000 >> "$API_LOG" 2>&1 &
-API_PID=$!
+python app.py --reload --host 0.0.0.0 --port 8000 >> "$BACKEND_LOG" 2>&1 &
+BACKEND_PID=$!
 
 # Start frontend
-echo -e "${GREEN}[3/3] Starting frontend (Vite)...${NC}" | tee -a "$MAIN_LOG"
+echo -e "${GREEN}[2/2] Starting frontend (Vite)...${NC}" | tee -a "$MAIN_LOG"
 cd "$FRONTEND_DIR"
 npm run dev >> "$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
@@ -81,13 +74,8 @@ echo "Waiting for services to initialize..." | tee -a "$MAIN_LOG"
 sleep 5
 
 # Verify services are running
-if ! kill -0 $MANAGER_PID 2>/dev/null; then
-    echo -e "${RED}Error: Manager failed to start${NC}" | tee -a "$MAIN_LOG"
-    exit 1
-fi
-
-if ! kill -0 $API_PID 2>/dev/null; then
-    echo -e "${RED}Error: API failed to start${NC}" | tee -a "$MAIN_LOG"
+if ! kill -0 $BACKEND_PID 2>/dev/null; then
+    echo -e "${RED}Error: Backend failed to start${NC}" | tee -a "$MAIN_LOG"
     exit 1
 fi
 
@@ -104,10 +92,8 @@ echo ""
 
 # Output PIDs and log paths for LLM consumption (machine-readable format)
 echo "=== SERVICES STARTED ==="
-echo "MANAGER_PID=$MANAGER_PID"
-echo "API_PID=$API_PID"
+echo "BACKEND_PID=$BACKEND_PID"
 echo "FRONTEND_PID=$FRONTEND_PID"
-echo "MANAGER_LOG=$MANAGER_LOG"
-echo "API_LOG=$API_LOG"
+echo "BACKEND_LOG=$BACKEND_LOG"
 echo "FRONTEND_LOG=$FRONTEND_LOG"
 echo "MAIN_LOG=$MAIN_LOG"
