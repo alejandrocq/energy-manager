@@ -137,13 +137,15 @@ class Plug:
 
 
 def human_time_to_seconds(human_time):
-    match: re.Match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
+    match = re.match(r"(\d+[h|m|s]?)(\d+[h|m|s]?)?(\d+[h|m|s]?)?", human_time)
+    if not match:
+        return 0
     h = match.group(1)
-    hours = int(h.replace('h', '') if h else 0)
+    hours = int(h.replace('h', '')) if h else 0
     m = match.group(2)
-    minutes = int(m.replace('m', '') if m else 0)
+    minutes = int(m.replace('m', '')) if m else 0
     s = match.group(3)
-    seconds = int(s.replace('s', '') if s else 0)
+    seconds = int(s.replace('s', '')) if s else 0
     return hours * 3600 + minutes * 60 + seconds
 
 
@@ -176,10 +178,9 @@ def send_email(subject, content, from_email, to_email, attach_chart=False):
 
 
 def toggle_plug_enabled(address: str):
-    # Load current states
+    """Toggle plug between automatic and manual mode. Preserves current plug state."""
     states = _load_plug_states()
 
-    # Check if plug exists
     plug_exists = False
     for section in config.sections():
         if section.startswith("plug") and config[section].get('address') == address:
@@ -189,21 +190,13 @@ def toggle_plug_enabled(address: str):
     if not plug_exists:
         raise ValueError("Plug not found")
 
-    # Get current state (default to True if not found)
     current = states.get(address, True)
-
-    # Turn plug off
-    for plug in get_plugs():
-        if plug.address == address:
-            plug.tapo.turnOff()
-            break
-
-    # Save new state
     states[address] = not current
     _save_plug_states(states)
 
 
 def get_plugs(enabled_only=False) -> list[Plug]:
+    """Get plugs. If enabled_only=True, returns only plugs in automatic mode."""
     config.read(CONFIG_FILE_PATH)
     tapo_email = config.get('credentials', 'tapo_email')
     tapo_password = config.get('credentials', 'tapo_password')
@@ -211,6 +204,8 @@ def get_plugs(enabled_only=False) -> list[Plug]:
     for section in config.sections():
         if section.startswith("plug"):
             address = config[section].get('address')
+            if not address:
+                continue
             enabled = is_plug_enabled(address)
             if (not enabled_only) or enabled:
                 out.append(Plug(config[section], tapo_email, tapo_password, enabled))
@@ -242,7 +237,7 @@ def _save_scheduled_events(events):
         json.dump(events, f, indent=2)
 
 
-def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: str, desired_state: bool, duration_seconds: int = None):
+def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: str, desired_state: bool, duration_seconds: int | None = None):
     """Create a new scheduled event for a plug."""
     events = _load_scheduled_events()
 
@@ -271,7 +266,7 @@ def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: s
     return event
 
 
-def get_scheduled_events(plug_address: str = None):
+def get_scheduled_events(plug_address: str | None = None):
     """Get all scheduled events, optionally filtered by plug address."""
     events = _load_scheduled_events()
     if plug_address:
@@ -396,7 +391,7 @@ def _cleanup_old_events():
 
 
 def _load_plug_states():
-    """Load plug enabled/disabled states from JSON file."""
+    """Load plug states from JSON file. True = automatic mode enabled, False = manual mode."""
     try:
         with open(PLUG_STATES_FILE_PATH, 'r') as f:
             return json.load(f)
@@ -411,9 +406,8 @@ def _save_plug_states(states):
 
 
 def is_plug_enabled(address: str) -> bool:
-    """Check if a plug is enabled based on its address."""
+    """Check if plug is in automatic mode. True = automatic mode, False = manual mode."""
     states = _load_plug_states()
-    # Default to True if not found (backward compatibility)
     return states.get(address, True)
 
 
@@ -455,9 +449,9 @@ if __name__ == '__main__':
                 last_states_mtime = current_states_mtime
 
             # Always reload plugs when either file changes
-            plugs = get_plugs(True)
+            plugs = get_plugs(False)
 
-        if (target_date is None or target_date.date() != datetime.now().date()) and not provider.unavailable():
+        if provider and (target_date is None or target_date.date() != datetime.now().date()) and not provider.unavailable():
             target_date = datetime.now()
             current_date = target_date.strftime("%Y%m%d")
             current_date_on_file = target_date.strftime("%Y;%m;%d")

@@ -355,12 +355,10 @@ const App: React.FC = () => {
                 {plugs.map(p => (
                     <li
                         key={p.address}
-                        className={`
-                            mb-4 border border-[#eee] rounded-lg overflow-hidden
-                            ${p.enabled ? 'bg-white' : 'opacity-60 bg-[#f8f9fa] border-[#e9ecef]'}
-                        `}
+                        className="mb-4 border border-[#eee] rounded-lg overflow-hidden bg-white"
                     >
-                        <div className="flex flex-col md:flex-row items-center gap-2 p-[12px] cursor-pointer bg-[#f9f9f9] hover:bg-[#eef6ff]" onClick={() => expand(p.address)}>
+                        <div className="flex flex-col md:flex-row items-center gap-2 p-[12px] cursor-pointer bg-[#f9f9f9] hover:bg-[#eef6ff]"
+                             onClick={() => expand(p.address)}>
                             <span className="text-5xl md:text-2xl"><FaPlug/></span>
                             <span className="flex-1">{p.name}</span>
                             {p.timer_remaining != null && (
@@ -387,63 +385,59 @@ const App: React.FC = () => {
                                     <span className="spinner-small"></span> :
                                     p.enabled ? 'Disable' : 'Enable'}
                             </button>
-                            {p.enabled && (
-                                <>
-                                    <button
-                                        className={`
+                            <button
+                                className={`
                                             w-full md:w-[90px] h-[35px] text-[0.9rem] rounded border-none cursor-pointer
                                             transition-shadow duration-200
                                             ${p.is_on
-                                                ? 'bg-green-600 hover:bg-green-700 shadow-md border border-green-600'
-                                                : 'bg-red-600 hover:bg-red-700 shadow-md border border-red-600'}
+                                    ? 'bg-green-600 hover:bg-green-700 shadow-md border border-green-600'
+                                    : 'bg-red-600 hover:bg-red-700 shadow-md border border-red-600'}
                                             text-white
                                             disabled:opacity-50 disabled:cursor-not-allowed
                                         `}
-                                        disabled={pendingOperations[`toggle-${p.address}`]}
-                                        onClick={e => {
-                                            e.stopPropagation()
-                                            togglePlug(p)
-                                        }}>
-                                        {pendingOperations[`toggle-${p.address}`] ?
-                                            <span className="spinner-small"></span> :
-                                            p.is_on ? 'On' : 'Off'}
-                                    </button>
-                                    <button
-                                        className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-purple-800 hover:to-purple-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-                                        onClick={e => {
-                                            e.stopPropagation()
-                                            setTimedModalPlug(p.address)
-                                        }}
-                                        disabled={pendingOperations[`timed-${p.address}`]}
-                                    >
-                                        {pendingOperations[`timed-${p.address}`] ? (
-                                            <span className="spinner-small"></span>
-                                        ) : (
-                                            <>
-                                                <FaClock className="w-3 h-3" />
-                                                <span>Timer</span>
-                                            </>
-                                        )}
-                                    </button>
-                                    <button
-                                        className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-teal-500 to-teal-700 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-teal-700 hover:to-teal-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-                                        onClick={e => {
-                                            e.stopPropagation()
-                                            setScheduleModalPlug(p.address)
-                                        }}
-                                        disabled={pendingOperations[`schedule-${p.address}`]}
-                                    >
-                                        {pendingOperations[`schedule-${p.address}`] ? (
-                                            <span className="spinner-small"></span>
-                                        ) : (
-                                            <>
-                                                <FaCalendar className="w-3 h-3" />
-                                                <span>Schedule</span>
-                                            </>
-                                        )}
-                                    </button>
-                                </>
-                            )}
+                                disabled={pendingOperations[`toggle-${p.address}`]}
+                                onClick={e => {
+                                    e.stopPropagation()
+                                    togglePlug(p)
+                                }}>
+                                {pendingOperations[`toggle-${p.address}`] ?
+                                    <span className="spinner-small"></span> :
+                                    p.is_on ? 'On' : 'Off'}
+                            </button>
+                            <button
+                                className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-purple-800 hover:to-purple-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                onClick={e => {
+                                    e.stopPropagation()
+                                    setTimedModalPlug(p.address)
+                                }}
+                                disabled={pendingOperations[`timed-${p.address}`]}
+                            >
+                                {pendingOperations[`timed-${p.address}`] ? (
+                                    <span className="spinner-small"></span>
+                                ) : (
+                                    <>
+                                        <FaClock className="w-3 h-3"/>
+                                        <span>Timer</span>
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-teal-500 to-teal-700 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-teal-700 hover:to-teal-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                onClick={e => {
+                                    e.stopPropagation()
+                                    setScheduleModalPlug(p.address)
+                                }}
+                                disabled={pendingOperations[`schedule-${p.address}`]}
+                            >
+                                {pendingOperations[`schedule-${p.address}`] ? (
+                                    <span className="spinner-small"></span>
+                                ) : (
+                                    <>
+                                        <FaCalendar className="w-3 h-3"/>
+                                        <span>Schedule</span>
+                                    </>
+                                )}
+                            </button>
                         </div>
                         {/* Display scheduled events */}
                         {p.schedules && p.schedules.length > 0 && (
@@ -451,16 +445,18 @@ const App: React.FC = () => {
                                 <p className="font-semibold mb-2"><strong>Upcoming Schedules:</strong></p>
                                 <ul className="list-none p-0 m-0 space-y-1">
                                     {p.schedules.map((schedule) => (
-                                        <li key={schedule.id} className="flex items-center justify-between bg-white rounded p-2 border border-[#d1e7dd]">
+                                        <li key={schedule.id}
+                                            className="flex items-center justify-between bg-white rounded p-2 border border-[#d1e7dd]">
                                             <div className="flex-1">
-                                                <FaCalendar className="inline-block mr-2 text-teal-600" />
+                                                <FaCalendar className="inline-block mr-2 text-teal-600"/>
                                                 <span className={schedule.desired_state ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
                                                     {schedule.desired_state ? 'ON' : 'OFF'}
                                                 </span>
                                                 <span className="ml-2">{fmtDatetime(schedule.target_datetime)}</span>
                                                 {schedule.duration_seconds && (
                                                     <span className="ml-2 text-gray-600">
-                                                        ({schedule.desired_state ? 'OFF' : 'ON'} after <FaClock className="inline-block mx-1 text-teal-600" />
+                                                        ({schedule.desired_state ? 'OFF' : 'ON'} after <FaClock
+                                                        className="inline-block mx-1 text-teal-600"/>
                                                         {fmtDuration(schedule.duration_seconds)})
                                                     </span>
                                                 )}
@@ -476,7 +472,7 @@ const App: React.FC = () => {
                                                 {pendingOperations[`delete-schedule-${schedule.id}`] ? (
                                                     <span className="spinner-small"></span>
                                                 ) : (
-                                                    <SlClose />
+                                                    <SlClose/>
                                                 )}
                                             </button>
                                         </li>
@@ -486,14 +482,16 @@ const App: React.FC = () => {
                         )}
                         {open === p.address && energyData[p.address] && (
                             <>
-                                <div className="p-[12px] bg-[#fafafa] border-t-1 border-t-[#eee] border-t-solid border-b-1 border-b-[#eee] border-b-solid text-[0.9rem] ">
+                                <div
+                                    className="p-[12px] bg-[#fafafa] border-t-1 border-t-[#eee] border-t-solid border-b-1 border-b-[#eee] border-b-solid text-[0.9rem] ">
                                     <p><strong>Address:</strong> {p.address}</p>
                                     {p.periods.length > 0 && (
                                         <>
                                             <p><strong>Periods:</strong></p>
                                             <ul className="list-none p-0 m-0">
                                                 {p.periods.map((period) => (
-                                                    <li key={`${period.start_hour}-${period.end_hour}-${period.target_hour}`} className="text-[0.9rem]">
+                                                    <li key={`${period.start_hour}-${period.end_hour}-${period.target_hour}`}
+                                                        className="text-[0.9rem]">
                                                         {period.start_hour}:00 - {period.end_hour}:00 | Runtime {period.runtime_human} |
                                                         Target {period.target_hour}:00 ({period.target_price} €/kWh)
                                                     </li>
