@@ -5,7 +5,7 @@ import {Bar} from 'react-chartjs-2'
 import {SlClose} from "react-icons/sl";
 import {FaCalendar, FaClock, FaPlug} from "react-icons/fa6";
 import {ImPower} from "react-icons/im";
-import {MdEnergySavingsLeaf, MdPowerSettingsNew, MdAutoMode} from "react-icons/md";
+import {MdEnergySavingsLeaf, MdPowerSettingsNew, MdAutoMode, MdSchedule} from "react-icons/md";
 import {FaRegChartBar} from "react-icons/fa";
 import {LuHousePlug} from "react-icons/lu";
 import {Modal} from "./Modal";
@@ -473,19 +473,26 @@ const App: React.FC = () => {
                                     className="p-[12px] bg-[#fafafa] border-t-1 border-t-[#eee] border-t-solid border-b-1 border-b-[#eee] border-b-solid text-[0.9rem] ">
                                     <p><strong>Address:</strong> {p.address}</p>
                                     {p.periods.length > 0 && (
-                                        <>
-                                            <p><strong>Periods:</strong></p>
-                                            <ul className="list-none p-0 m-0">
+                                        <div className="mt-3 bg-[#e3f2fd] border-t-1 border-t-[#bbdefb] border-t-solid text-[0.9rem]">
+                                            <p className="font-semibold mb-2"><strong>Optimization Periods:</strong></p>
+                                            <ul className="list-none p-0 m-0 space-y-1">
                                                 {p.periods.map((period) => (
                                                     <li key={`${period.start_hour}-${period.end_hour}-${period.target_hour}`}
-                                                        className="text-[0.9rem]">
-                                                        {period.start_hour}:00 - {period.end_hour}:00 | Runtime {period.runtime_human} |
-                                                        Target {period.target_hour}:00 ({period.target_price} €/kWh)
+                                                        className="flex items-center justify-between bg-white rounded p-2 border border-[#bbdefb]">
+                                                        <div className="flex-1">
+                                                            <MdSchedule className="inline-block mr-2 text-blue-600"/>
+                                                            <span className="font-medium">{period.start_hour}:00 - {period.end_hour}:00</span>
+                                                            <span className="ml-2 text-gray-600">
+                                                                (Runtime: {period.runtime_human})
+                                                            </span>
+                                                            <span className="ml-2 text-blue-700">
+                                                                Target: {period.target_hour}:00 ({period.target_price} €/kWh)
+                                                            </span>
+                                                        </div>
                                                     </li>
-                                                ))
-                                                }
+                                                ))}
                                             </ul>
-                                        </>
+                                        </div>
                                     )}
                                 </div>
                                 <div className="chart-container">
