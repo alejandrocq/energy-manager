@@ -77,7 +77,23 @@ async def plug_energy(address: str):
 async def toggle_enable(address: str):
     try:
         await run_in_threadpool(m.toggle_plug_enabled, address)
-        return {'status': 'success'}
+
+        # If plug is now in automatic mode, regenerate schedules
+        is_enabled = await run_in_threadpool(m.is_plug_enabled, address)
+        if is_enabled:
+            try:
+                target_date = datetime.now()
+                provider = await run_in_threadpool(m.get_provider)
+                prices = await run_in_threadpool(provider.get_prices, target_date)
+
+                if prices:
+                    plugs = await run_in_threadpool(m.get_plugs, False)
+                    await run_in_threadpool(m.generate_automatic_schedules, plugs, prices, target_date)
+            except Exception as e:
+                # Log error but don't fail the toggle operation
+                print(f"Warning: Failed to regenerate schedules: {e}")
+
+        return {'status': 'success', 'enabled': is_enabled}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
