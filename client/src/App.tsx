@@ -1,23 +1,24 @@
 import React, {useCallback, useEffect, useState, useMemo, memo} from 'react'
 import './App.css'
-import {CategoryScale, Chart as ChartJS, Legend, LinearScale, BarElement, Title, Tooltip} from 'chart.js'
+import {CategoryScale, Chart as ChartJS, Legend, LinearScale, BarElement, Title, Tooltip as ChartTooltip} from 'chart.js'
 import {Bar} from 'react-chartjs-2'
 import {SlClose} from "react-icons/sl";
 import {FaCalendar, FaClock, FaPlug} from "react-icons/fa6";
 import {ImPower} from "react-icons/im";
-import {MdEnergySavingsLeaf} from "react-icons/md";
+import {MdEnergySavingsLeaf, MdPowerSettingsNew, MdAutoMode} from "react-icons/md";
 import {FaRegChartBar} from "react-icons/fa";
 import {LuHousePlug} from "react-icons/lu";
 import {Modal} from "./Modal";
 import {TimerSelector} from "./TimerSelector.tsx";
 import {ScheduleSelector} from "./ScheduleSelector.tsx";
+import {Tooltip} from "./Tooltip";
 
 ChartJS.register(
     CategoryScale,
     LinearScale,
     BarElement,
     Title,
-    Tooltip,
+    ChartTooltip,
     Legend
 )
 
@@ -100,7 +101,7 @@ const ToastNotification = memo(({toast, onDismiss}: { toast: Toast, onDismiss: (
     return (
         <div className={`toast ${toast.type}`}>
             <div className="toast-message">{toast.message}</div>
-            <button className="toast-close" onClick={() => onDismiss(toast.id)}><SlClose/></button>
+            <button className="toast-close cursor-pointer" onClick={() => onDismiss(toast.id)}><SlClose/></button>
         </div>
     );
 });
@@ -355,7 +356,7 @@ const App: React.FC = () => {
                 {plugs.map(p => (
                     <li
                         key={p.address}
-                        className="mb-4 border border-[#eee] rounded-lg overflow-hidden bg-white"
+                        className="mb-4 border border-[#eee] rounded-lg bg-white"
                     >
                         <div className="flex flex-col md:flex-row items-center gap-2 p-[12px] cursor-pointer bg-[#f9f9f9] hover:bg-[#eef6ff]"
                              onClick={() => expand(p.address)}>
@@ -371,73 +372,49 @@ const App: React.FC = () => {
                                     <ImPower/> {p.current_power} W
                                 </div>
                             )}
-                            <button
-                                className={`
-                                    w-full md:w-[90px] h-[35px] bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded
-                                    text-[0.9rem] shadow-md border-none cursor-pointer
-                                    transition-shadow duration-300
-                                    hover:from-blue-800 hover:to-blue-900 hover:shadow-lg
-                                    disabled:opacity-50 disabled:cursor-not-allowed
-                                `}
-                                disabled={pendingOperations[`enable-${p.address}`]}
-                                onClick={(e) => toggleEnable(p.address, e)}>
-                                {pendingOperations[`enable-${p.address}`] ?
-                                    <span className="spinner-small"></span> :
-                                    p.enabled ? 'Disable' : 'Enable'}
-                            </button>
-                            <button
-                                className={`
-                                            w-full md:w-[90px] h-[35px] text-[0.9rem] rounded border-none cursor-pointer
-                                            transition-shadow duration-200
-                                            ${p.is_on
-                                    ? 'bg-green-600 hover:bg-green-700 shadow-md border border-green-600'
-                                    : 'bg-red-600 hover:bg-red-700 shadow-md border border-red-600'}
-                                            text-white
-                                            disabled:opacity-50 disabled:cursor-not-allowed
-                                        `}
-                                disabled={pendingOperations[`toggle-${p.address}`]}
-                                onClick={e => {
-                                    e.stopPropagation()
-                                    togglePlug(p)
-                                }}>
-                                {pendingOperations[`toggle-${p.address}`] ?
-                                    <span className="spinner-small"></span> :
-                                    p.is_on ? 'On' : 'Off'}
-                            </button>
-                            <button
-                                className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-purple-600 to-purple-800 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-purple-800 hover:to-purple-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-                                onClick={e => {
-                                    e.stopPropagation()
-                                    setTimedModalPlug(p.address)
-                                }}
-                                disabled={pendingOperations[`timed-${p.address}`]}
-                            >
-                                {pendingOperations[`timed-${p.address}`] ? (
-                                    <span className="spinner-small"></span>
-                                ) : (
-                                    <>
-                                        <FaClock className="w-3 h-3"/>
-                                        <span>Timer</span>
-                                    </>
-                                )}
-                            </button>
-                            <button
-                                className="w-full md:w-[110px] h-[35px] bg-gradient-to-r from-teal-500 to-teal-700 text-white rounded text-[0.9rem] shadow-md border-none cursor-pointer transition-shadow duration-300 hover:from-teal-700 hover:to-teal-900 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-                                onClick={e => {
-                                    e.stopPropagation()
-                                    setScheduleModalPlug(p.address)
-                                }}
-                                disabled={pendingOperations[`schedule-${p.address}`]}
-                            >
-                                {pendingOperations[`schedule-${p.address}`] ? (
-                                    <span className="spinner-small"></span>
-                                ) : (
-                                    <>
-                                        <FaCalendar className="w-3 h-3"/>
-                                        <span>Schedule</span>
-                                    </>
-                                )}
-                            </button>
+
+                            {/* Actions Container */}
+                            <div className="flex items-center justify-center md:justify-start gap-2 w-full md:w-auto mt-2 md:mt-0" onClick={e => e.stopPropagation()}>
+                                <Tooltip text={p.is_on ? "Turn Off" : "Turn On"}>
+                                    <button
+                                        aria-label={p.is_on ? "Turn Off" : "Turn On"}
+                                        className={`w-10 h-10 flex items-center justify-center rounded transition-all cursor-pointer text-white shadow-sm hover:scale-105 active:scale-95 ${p.is_on ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}`}
+                                        disabled={pendingOperations[`toggle-${p.address}`]}
+                                        onClick={() => togglePlug(p)}>
+                                        {pendingOperations[`toggle-${p.address}`] ? <span className="spinner-small border-white border-t-transparent"></span> : <MdPowerSettingsNew className="size-5" />}
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip text="Set Timer">
+                                    <button
+                                        aria-label="Set Timer"
+                                        className="w-10 h-10 flex items-center justify-center bg-purple-100 text-purple-700 rounded hover:bg-purple-200 cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
+                                        onClick={() => setTimedModalPlug(p.address)}
+                                        disabled={pendingOperations[`timed-${p.address}`]}>
+                                        {pendingOperations[`timed-${p.address}`] ? <span className="spinner-small border-purple-400 border-t-purple-700"></span> : <FaClock className="size-5" />}
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip text="Schedule">
+                                    <button
+                                        aria-label="Schedule"
+                                        className="w-10 h-10 flex items-center justify-center bg-teal-100 text-teal-700 rounded hover:bg-teal-200 cursor-pointer shadow-sm hover:scale-105 active:scale-95 transition-all"
+                                        onClick={() => setScheduleModalPlug(p.address)}
+                                        disabled={pendingOperations[`schedule-${p.address}`]}>
+                                        {pendingOperations[`schedule-${p.address}`] ? <span className="spinner-small border-teal-400 border-t-teal-700"></span> : <FaCalendar className="size-5" />}
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip text={p.enabled ? "Switch to Manual" : "Switch to Automatic"}>
+                                    <button
+                                        aria-label={p.enabled ? "Switch to Manual" : "Switch to Automatic"}
+                                        className={`w-10 h-10 flex items-center justify-center rounded transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 ${p.enabled ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                        disabled={pendingOperations[`enable-${p.address}`]}
+                                        onClick={(e) => toggleEnable(p.address, e)}>
+                                        {pendingOperations[`enable-${p.address}`] ? <span className="spinner-small border-blue-400 border-t-blue-700"></span> : <MdAutoMode className="size-5" />}
+                                    </button>
+                                </Tooltip>
+                            </div>
                         </div>
                         {/* Display scheduled events */}
                         {p.schedules && p.schedules.length > 0 && (
