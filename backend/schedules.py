@@ -245,7 +245,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
 
     # Generate new automatic schedules
     for plug in plugs:
-        if not plug.enabled:
+        if not plug.automatic_schedules:
             logger.info(f"Skipping automatic schedule generation [plug_name={plug.name}, reason=manual_mode]")
             continue
 

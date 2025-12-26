@@ -35,10 +35,10 @@ def human_time_to_seconds(human_time):
 
 
 class Plug:
-    def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str, enabled: bool = True):
+    def __init__(self, plug_config: configparser.SectionProxy, email: str, password: str, automatic_schedules: bool = True):
         self.name = plug_config.get('name')
         self.address = plug_config.get('address')
-        self.enabled = enabled
+        self.automatic_schedules = automatic_schedules
         self.tapo = PyP100.Switchable(self.address, email, password)
         self._lock = threading.Lock()
 
@@ -244,7 +244,7 @@ class PlugManager:
         self._plugs: list[Plug] = []
         self._lock = threading.Lock()
 
-    def reload_plugs(self, enabled_only=False):
+    def reload_plugs(self, automatic_only=False):
         """Reload plugs from config file. Thread-safe."""
         config.read(CONFIG_FILE_PATH)
         tapo_email = config.get('credentials', 'tapo_email')
@@ -256,20 +256,20 @@ class PlugManager:
                 address = config[section].get('address')
                 if not address:
                     continue
-                enabled = is_plug_enabled(address)
-                if (not enabled_only) or enabled:
-                    new_plugs.append(Plug(config[section], tapo_email, tapo_password, enabled))
+                automatic = is_plug_automatic(address)
+                if (not automatic_only) or automatic:
+                    new_plugs.append(Plug(config[section], tapo_email, tapo_password, automatic))
 
         with self._lock:
             self._plugs = new_plugs
 
         logger.info(f"Reloaded plugs from config [count={len(new_plugs)}]")
 
-    def get_plugs(self, enabled_only=False) -> list[Plug]:
+    def get_plugs(self, automatic_only=False) -> list[Plug]:
         """Get current plugs. Thread-safe read."""
         with self._lock:
-            if enabled_only:
-                return [p for p in self._plugs if p.enabled]
+            if automatic_only:
+                return [p for p in self._plugs if p.automatic_schedules]
             return self._plugs.copy()
 
     def get_plug_by_address(self, address: str) -> Plug | None:
@@ -286,7 +286,7 @@ plug_manager = PlugManager()
 
 
 def _load_plug_states():
-    """Load plug states from JSON file. True = automatic mode enabled, False = manual mode."""
+    """Load plug states from JSON file. True = automatic schedules enabled, False = manual mode."""
     try:
         with open(PLUG_STATES_FILE_PATH, 'r') as f:
             return json.load(f)
@@ -300,13 +300,13 @@ def _save_plug_states(states):
         json.dump(states, f, indent=2)
 
 
-def is_plug_enabled(address: str) -> bool:
+def is_plug_automatic(address: str) -> bool:
     """Check if plug is in automatic mode. True = automatic mode, False = manual mode."""
     states = _load_plug_states()
     return states.get(address, True)
 
 
-def toggle_plug_enabled(address: str):
+def toggle_plug_automatic(address: str):
     """Toggle plug between automatic and manual mode. Preserves current plug state."""
     states = _load_plug_states()
 
@@ -319,14 +319,21 @@ def toggle_plug_enabled(address: str):
     if not plug_exists:
         raise ValueError("Plug not found")
 
-    current = states.get(address, True)
-    states[address] = not current
+    result = not states.get(address, True)
+    states[address] = result
     _save_plug_states(states)
 
+    plug = plug_manager.get_plug_by_address(address)
+    if plug:
+        with plug.acquire_lock():
+            plug.automatic_schedules = result
 
-def get_plugs(enabled_only=False) -> list[Plug]:
-    """Get plugs from shared plug manager. If enabled_only=True, returns only plugs in automatic mode."""
-    return plug_manager.get_plugs(enabled_only)
+    return result
+
+
+def get_plugs(automatic_only=False) -> list[Plug]:
+    """Get plugs from shared plug manager. If automatic_only=True, returns only plugs in automatic mode."""
+    return plug_manager.get_plugs(automatic_only)
 
 
 def get_plug_energy(address):

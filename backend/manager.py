@@ -66,7 +66,7 @@ def run_manager_main(stop_event=None):
                 last_states_mtime = current_states_mtime
 
             # Always reload shared plugs when either file changes
-            plug_manager.reload_plugs(enabled_only=False)
+            plug_manager.reload_plugs(automatic_only=False)
 
         if provider and (target_date is None or target_date.date() != datetime.now().date()) and not provider.unavailable():
             target_date = datetime.now()
@@ -85,7 +85,7 @@ def run_manager_main(stop_event=None):
                 email_message += f"⏱️💶 {hour}h: {price} €/kWh<br>"
 
             # Get shared plugs for daily email and schedule generation
-            plugs = get_plugs(enabled_only=False)
+            plugs = get_plugs(automatic_only=False)
             for plug in plugs:
                 plug.calculate_target_hours(hourly_prices)
 
@@ -143,7 +143,7 @@ def run_manager_main(stop_event=None):
             )
             logger.info(f"Downloaded prices data and sent email [date={target_date.date()}]")
 
-            # Generate automatic schedules for enabled plugs
+            # Generate automatic schedules for automatic plugs
             generate_automatic_schedules(plugs, hourly_prices, target_date)
 
         # Process scheduled events (uses shared plug manager)

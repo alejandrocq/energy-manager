@@ -5,7 +5,7 @@ import {Bar} from 'react-chartjs-2'
 import {SlClose} from "react-icons/sl";
 import {FaCalendar, FaClock, FaPlug} from "react-icons/fa6";
 import {ImPower} from "react-icons/im";
-import {MdEnergySavingsLeaf, MdPowerSettingsNew, MdAutoMode, MdSchedule} from "react-icons/md";
+import {MdEnergySavingsLeaf, MdPowerSettingsNew, MdAutoMode} from "react-icons/md";
 import {FaRegChartBar} from "react-icons/fa";
 import {LuHousePlug} from "react-icons/lu";
 import {Modal} from "./Modal";
@@ -44,7 +44,7 @@ interface ScheduledEvent {
 }
 
 interface Plug {
-    enabled: boolean
+    automatic_schedules: boolean
     name: string
     address: string
     is_on: boolean | null
@@ -213,21 +213,21 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }, [showToast, fetchPlugs, fetchEnergy, open])
 
-    const toggleEnable = useCallback(async (address: string, e: React.MouseEvent) => {
+    const toggleAutomatic = useCallback(async (address: string, e: React.MouseEvent) => {
         e.stopPropagation()
-        const operationKey = `enable-${address}`
+        const operationKey = `automatic-${address}`
         const plug = plugs.find(p => p.address === address)
 
         setPendingOperations(prev => ({...prev, [operationKey]: true}))
 
-        const action = plug?.enabled ? 'disabled' : 'enabled'
-        const response = await fetch(`${API}/plugs/${address}/toggle_enable`, {method: 'POST'})
+        const action = plug?.automatic_schedules ? 'switched to manual' : 'switched to automatic'
+        const response = await fetch(`${API}/plugs/${address}/toggle_automatic`, {method: 'POST'})
 
         if (response.ok) {
-            showToast('success', `${plug?.name}: ${action} successfully`)
+            showToast('success', `${plug?.name}: ${action}`)
             await fetchPlugs()
         } else {
-            showToast('error', `${plug?.name}: Could not be ${action}`)
+            showToast('error', `${plug?.name}: Could not ${action}`)
         }
 
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
@@ -397,13 +397,13 @@ const App: React.FC = () => {
                                     </button>
                                 </Tooltip>
 
-                                <Tooltip text={p.enabled ? "Switch to Manual" : "Switch to Automatic"}>
+                                <Tooltip text={p.automatic_schedules ? "Switch to Manual" : "Switch to Automatic"}>
                                     <button
-                                        aria-label={p.enabled ? "Switch to Manual" : "Switch to Automatic"}
-                                        className={`w-10 h-10 flex items-center justify-center rounded transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 ${p.enabled ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                                        disabled={pendingOperations[`enable-${p.address}`]}
-                                        onClick={(e) => toggleEnable(p.address, e)}>
-                                        {pendingOperations[`enable-${p.address}`] ? <span className="spinner-small border-blue-400 border-t-blue-700"></span> : <MdAutoMode className="size-5" />}
+                                        aria-label={p.automatic_schedules ? "Switch to Manual" : "Switch to Automatic"}
+                                        className={`w-10 h-10 flex items-center justify-center rounded transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 ${p.automatic_schedules ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                        disabled={pendingOperations[`automatic-${p.address}`]}
+                                        onClick={(e) => toggleAutomatic(p.address, e)}>
+                                        {pendingOperations[`automatic-${p.address}`] ? <span className="spinner-small border-blue-400 border-t-blue-700"></span> : <MdAutoMode className="size-5" />}
                                     </button>
                                 </Tooltip>
                             </div>

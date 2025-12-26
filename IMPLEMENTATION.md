@@ -196,3 +196,33 @@ This file documents significant changes, fixes, and improvements to the Energy M
 - Documentation: Clear guidelines for change tracking
 - Git: Consistent commit message format
 - Development: Standard workflow for all developers
+
+---
+
+## 2025-12-26 - Rename enabled field to automatic_schedules and fix UI state sync
+
+**Problem:**
+- Field named "enabled" was ambiguous - didn't clearly represent automatic/manual mode
+- UI didn't update correctly after backend reloaded plug_states.json
+- In-memory Plug state not updated when toggling automatic/manual mode
+
+**Solution:**
+- Renamed "enabled" field to "automatic_schedules" across backend and frontend
+- Added update_plug_automatic_state() function to update in-memory state immediately
+- Changed toggle_plug_automatic() to return new state value
+- Renamed API endpoint from /toggle_enable to /toggle_automatic
+- Updated all references in plugs.py, app.py, manager.py, schedules.py, App.tsx
+
+**Impact:**
+- Backend: Field name now clearly represents automatic scheduling mode
+- Backend: In-memory plug state updated immediately after toggle
+- Frontend: UI correctly reflects automatic/manual state after operations
+- API: Response field renamed from "enabled" to "automatic_schedules"
+
+**Files modified:**
+- backend/config.py: Renamed PLUG_STATES_FILE_PATH variable
+- backend/plugs.py: Plug.enabled → Plug.automatic_schedules, added update function
+- backend/manager.py: Updated to use renamed field and functions
+- backend/app.py: Renamed endpoint and response field, added immediate state update
+- backend/schedules.py: Updated to check automatic_schedules field
+- client/src/App.tsx: Updated interface and toggle function, renamed API endpoint

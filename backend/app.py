@@ -4,6 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,7 +14,7 @@ from config import get_provider
 # Get centralized logger (configured in config.py)
 logger = logging.getLogger("energy_manager")
 from manager import run_manager_main
-from plugs import get_plugs, get_plug_energy, is_plug_enabled, plug_manager, toggle_plug_enabled
+from plugs import get_plugs, plug_manager, toggle_plug_automatic
 from schedules import (
     clear_automatic_schedules,
     create_scheduled_event,
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize shared plug manager
     logger.info("Loading plugs from config")
-    plug_manager.reload_plugs(enabled_only=False)
+    plug_manager.reload_plugs(automatic_only=False)
 
     manager_thread = ManagerThread()
     manager_thread.start()
@@ -139,7 +140,7 @@ async def plugs():
         out.append({
             'name': p.name,
             'address': p.address,
-            'enabled': p.enabled,
+            'automatic_schedules': p.automatic_schedules,
             'is_on': st,
             'timer_remaining': tr,
             'schedules': schedules,
@@ -159,14 +160,13 @@ async def plug_energy(address: str):
         raise HTTPException(500, 'error fetching energy data')
 
 
-@app.post('/api/plugs/{address}/toggle_enable')
-async def toggle_enable(address: str):
+@app.post('/api/plugs/{address}/toggle_automatic')
+async def toggle_automatic(address: str):
     try:
-        await run_in_threadpool(toggle_plug_enabled, address)
+        automatic = await run_in_threadpool(toggle_plug_automatic, address)
 
         # Handle schedule management based on new mode
-        enabled = await run_in_threadpool(is_plug_enabled, address)
-        if enabled:
+        if automatic:
             # Plug switched to automatic mode - regenerate schedules
             try:
                 target_date = datetime.now()
@@ -174,7 +174,7 @@ async def toggle_enable(address: str):
                 prices = await run_in_threadpool(provider.get_prices, target_date)
 
                 if prices:
-                    plugs = await run_in_threadpool(get_plugs, False)
+                    plugs = await run_in_threadpool(get_plugs, automatic_only=False)
                     await run_in_threadpool(generate_automatic_schedules, plugs, prices, target_date)
             except Exception as e:
                 # Log error but don't fail the toggle operation
@@ -187,7 +187,7 @@ async def toggle_enable(address: str):
                 # Log error but don't fail the toggle operation
                 logger.warning(f"Failed to clear schedules [error={e}]")
 
-        return {'status': 'success', 'enabled': enabled}
+        return {'status': 'success', 'automatic_schedules': automatic}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -298,7 +298,7 @@ async def recalculate_schedules():
         if not prices:
             raise HTTPException(500, 'No price data available')
 
-        plugs = await run_in_threadpool(get_plugs, False)
+        plugs = await run_in_threadpool(get_plugs, automatic_only=False)
         await run_in_threadpool(generate_automatic_schedules, plugs, prices, target_date)
 
         return {
