@@ -109,13 +109,11 @@ async def health():
 @app.get('/api/plugs')
 async def plugs():
     out = []
-    prices = await run_in_threadpool(get_provider().get_prices, datetime.now())
     all_schedules = await run_in_threadpool(get_scheduled_events)
     for p in get_plugs():
         try:
             st = await run_in_threadpool(p.tapo.get_status)
             tr = await run_in_threadpool(p.get_rule_remain_seconds)
-            p.calculate_target_hours(prices)
             # Fetch current energy usage (instantaneous)
             current_power = await run_in_threadpool(p.get_current_power)
         except:
@@ -133,16 +131,6 @@ async def plugs():
             'is_on': st,
             'timer_remaining': tr,
             'schedules': schedules,
-            'periods': [
-                {
-                    'start_hour': per['start_hour'],
-                    'end_hour': per['end_hour'],
-                    'runtime_human': per['runtime_human'],
-                    'target_hour': per['target'][0] if per.get('target') else None,
-                    'target_price': per['target'][1] if per.get('target') else None,
-                }
-                for per in p.periods
-            ],
             'current_power': current_power
         })
     return out

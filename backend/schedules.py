@@ -245,60 +245,128 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
 
         plug.calculate_target_hours(prices)
 
-        for period_idx, period in enumerate(plug.periods):
-            target = period.get('target')
-            if not target:
+        # Read system timezone from /etc/timezone (set during Docker build)
+        try:
+            with open('/etc/timezone', 'r') as f:
+                system_tz = f.read().strip()
+            local_tz = ZoneInfo(system_tz)
+        except (FileNotFoundError, Exception):
+            # Fallback to UTC if /etc/timezone doesn't exist
+            local_tz = timezone.utc
+
+        if plug.strategy_name == 'valley_detection':
+            # For valley detection, group contiguous hours into valleys and create one event per valley
+            period = plug.periods[0]
+            target_hours = period.get('target_hours', [])
+            total_runtime = period['runtime_seconds']
+
+            if not target_hours or total_runtime <= 0:
                 continue
 
-            target_hour, target_price = target
-            runtime_seconds = period['runtime_seconds']
+            # Group contiguous hours into valleys
+            valleys = []
+            current_valley = [target_hours[0]]
 
-            if runtime_seconds <= 0:
-                continue
+            for i in range(1, len(target_hours)):
+                if target_hours[i] == target_hours[i-1] + 1:
+                    # Contiguous hour, add to current valley
+                    current_valley.append(target_hours[i])
+                else:
+                    # Gap found, start new valley
+                    valleys.append(current_valley)
+                    current_valley = [target_hours[i]]
 
-            # Create datetime for the target hour on target_date
-            # Prices are in local time, so create datetime in local timezone first
-            # Read system timezone from /etc/timezone (set during Docker build)
-            try:
-                with open('/etc/timezone', 'r') as f:
-                    system_tz = f.read().strip()
-                local_tz = ZoneInfo(system_tz)
-            except (FileNotFoundError, Exception):
-                # Fallback to UTC if /etc/timezone doesn't exist
-                local_tz = timezone.utc
+            # Don't forget the last valley
+            valleys.append(current_valley)
 
-            target_dt_local = datetime(
-                target_date.year,
-                target_date.month,
-                target_date.day,
-                target_hour,
-                0,  # minute
-                0,  # second
-                tzinfo=local_tz
-            )
-            # Convert to UTC for storage
-            target_dt = target_dt_local.astimezone(timezone.utc)
+            # Calculate runtime per valley
+            runtime_per_valley = total_runtime // len(valleys)
+            price_map = {h: p for h, p in prices}
 
-            # Skip if target time is in the past
-            if target_dt < now:
-                logging.info(f"Skipping past schedule [plug_name={plug.name}, period={period_idx+1}, target_time={target_dt}]")
-                continue
+            for valley in valleys:
+                valley_start_hour = valley[0]
+                valley_hours_str = f"[{', '.join(map(str, valley))}]"
+                avg_price = sum(price_map.get(h, 0) for h in valley) / len(valley)
 
-            # Create automatic schedule event
-            event = {
-                'id': str(uuid.uuid4()),
-                'plug_address': plug.address,
-                'plug_name': plug.name,
-                'target_datetime': target_dt.isoformat(),
-                'desired_state': True,  # Turn ON at cheapest hour
-                'duration_seconds': runtime_seconds,
-                'type': 'automatic',
-                'source_period': period_idx,
-                'status': 'pending',
-                'created_at': now.isoformat()
-            }
-            events.append(event)
-            logging.info(f"Created automatic schedule [plug_name={plug.name}, period={period_idx+1}, hour={target_hour}, price={target_price}, duration={timedelta(seconds=runtime_seconds)}]")
+                # Create datetime for the valley start
+                target_dt_local = datetime(
+                    target_date.year,
+                    target_date.month,
+                    target_date.day,
+                    valley_start_hour,
+                    0,  # minute
+                    0,  # second
+                    tzinfo=local_tz
+                )
+                target_dt = target_dt_local.astimezone(timezone.utc)
+
+                # Skip if target time is in the past
+                if target_dt < now:
+                    logging.info(f"Skipping past schedule [plug_name={plug.name}, valley={valley_hours_str}, target_time={target_dt}]")
+                    continue
+
+                # Create automatic schedule event for this valley
+                event = {
+                    'id': str(uuid.uuid4()),
+                    'plug_address': plug.address,
+                    'plug_name': plug.name,
+                    'target_datetime': target_dt.isoformat(),
+                    'desired_state': True,
+                    'duration_seconds': runtime_per_valley,
+                    'type': 'automatic',
+                    'source_period': 0,
+                    'status': 'pending',
+                    'created_at': now.isoformat()
+                }
+                events.append(event)
+                logging.info(f"Created automatic schedule [plug_name={plug.name}, strategy=valley_detection, valley={valley_hours_str}, avg_price={avg_price:.4f}, duration={timedelta(seconds=runtime_per_valley)}]")
+
+        else:
+            # For period strategy (existing behavior)
+            for period_idx, period in enumerate(plug.periods):
+                target = period.get('target')
+                if not target:
+                    continue
+
+                target_hour, target_price = target
+                runtime_seconds = period['runtime_seconds']
+
+                if runtime_seconds <= 0:
+                    continue
+
+                # Create datetime for the target hour on target_date
+                target_dt_local = datetime(
+                    target_date.year,
+                    target_date.month,
+                    target_date.day,
+                    target_hour,
+                    0,  # minute
+                    0,  # second
+                    tzinfo=local_tz
+                )
+                # Convert to UTC for storage
+                target_dt = target_dt_local.astimezone(timezone.utc)
+
+                # Skip if target time is in the past
+                if target_dt < now:
+                    logging.info(f"Skipping past schedule [plug_name={plug.name}, period={period_idx+1}, target_time={target_dt}]")
+                    continue
+
+                # Create automatic schedule event
+                event = {
+                    'id': str(uuid.uuid4()),
+                    'plug_address': plug.address,
+                    'plug_name': plug.name,
+                    'target_datetime': target_dt.isoformat(),
+                    'desired_state': True,  # Turn ON at cheapest hour
+                    'duration_seconds': runtime_seconds,
+                    'type': 'automatic',
+                    'source_period': period_idx,
+                    'status': 'pending',
+                    'created_at': now.isoformat()
+                }
+                events.append(event)
+                logging.info(f"Created automatic schedule [plug_name={plug.name}, strategy=period, period={period_idx+1}, hour={target_hour}, price={target_price:.4f}, duration={timedelta(seconds=runtime_seconds)}]")
 
     _save_scheduled_events(events)
     logging.info(f"Generated automatic schedules [date={target_date.date()}]")

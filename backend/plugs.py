@@ -10,6 +10,7 @@ from datetime import datetime
 from PyP100 import PyP100, MeasureInterval
 
 from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config
+from scheduling import create_strategy
 
 
 def human_time_to_seconds(human_time):
@@ -32,6 +33,20 @@ class Plug:
         self.enabled = enabled
         self.tapo = PyP100.Switchable(self.address, email, password)
 
+        # Load scheduling strategy (default to 'period' for backward compatibility)
+        strategy_name = plug_config.get('strategy', 'period')
+        self.strategy = create_strategy(strategy_name)
+        self.strategy_name = strategy_name
+
+        # Parse strategy-specific configuration
+        if strategy_name == 'valley_detection':
+            self._parse_valley_detection_config(plug_config)
+        else:
+            # Default to period strategy (existing behavior)
+            self._parse_period_config(plug_config)
+
+    def _parse_period_config(self, plug_config: configparser.SectionProxy):
+        """Parse period-based strategy configuration."""
         periods_temp = {}
         for key, val in plug_config.items():
             m = re.match(r'period(\d+)_(start|end)_hour', key)
@@ -43,34 +58,112 @@ class Plug:
             if m2:
                 idx = int(m2.group(1))
                 periods_temp.setdefault(idx, {})['runtime_human'] = val
+
         self.periods = []
         for idx in sorted(periods_temp):
             p = periods_temp[idx]
             human = p.get('runtime_human')
             secs = human_time_to_seconds(human) if human else 0
+            runtime_hours = secs / 3600
             self.periods.append({
                 'start_hour': p.get('start_hour', 0),
                 'end_hour': p.get('end_hour', 0),
                 'runtime_human': human,
                 'runtime_seconds': secs,
+                'runtime_hours': runtime_hours,
                 'target': None
             })
 
-    def calculate_target_hours(self, prices: list[tuple[int, float]]):
-        if prices:
-            for period in self.periods:
-                period['target'] = min(
-                    [(h, p) for h, p in prices if period['start_hour'] <= h <= period['end_hour']],
-                    key=lambda x: x[1]
-                )
+        # Store strategy config for calculate_target_hours
+        self.strategy_config = {
+            'periods': [
+                {
+                    'start_hour': p['start_hour'],
+                    'end_hour': p['end_hour'],
+                    'runtime_hours': int(p['runtime_hours'])
+                }
+                for p in self.periods
+            ]
+        }
 
-    def runtime_seconds(self):
-        current_hour = datetime.now().hour
-        for period in self.periods:
-            tgt = period.get('target')
-            if tgt and tgt[0] == current_hour:
-                return period['runtime_seconds']
-        return 0
+    def _parse_valley_detection_config(self, plug_config: configparser.SectionProxy):
+        """Parse valley detection strategy configuration."""
+        device_profile = plug_config.get('device_profile', 'generic')
+        runtime_human = plug_config.get('runtime_hours_human')
+        runtime_hours = plug_config.get('runtime_hours')
+
+        # Parse runtime (support both human format and hours)
+        if runtime_human:
+            runtime_seconds = human_time_to_seconds(runtime_human)
+            runtime_hours = runtime_seconds / 3600
+        elif runtime_hours:
+            runtime_hours = float(runtime_hours)
+            runtime_seconds = int(runtime_hours * 3600)
+        else:
+            runtime_hours = 1
+            runtime_seconds = 3600
+
+        time_constraints = plug_config.get('time_constraints')
+        morning_window = plug_config.get('morning_window')
+        evening_window = plug_config.get('evening_window')
+
+        # Store as single "virtual" period for compatibility with existing code
+        self.periods = [{
+            'start_hour': 0,
+            'end_hour': 23,
+            'runtime_human': f"{int(runtime_hours)}h",
+            'runtime_seconds': runtime_seconds,
+            'runtime_hours': runtime_hours,
+            'target': None  # Will be populated as list of hours
+        }]
+
+        # Store strategy config
+        self.strategy_config = {
+            'device_profile': device_profile,
+            'runtime_hours': runtime_hours
+        }
+        if time_constraints:
+            self.strategy_config['time_constraints'] = time_constraints
+        if morning_window:
+            self.strategy_config['morning_window'] = morning_window
+        if evening_window:
+            self.strategy_config['evening_window'] = evening_window
+
+    def calculate_target_hours(self, prices: list[tuple[int, float]]):
+        """Calculate target hours using the configured strategy."""
+        if not prices:
+            return
+
+        # Use strategy to calculate target hours
+        target_hours = self.strategy.calculate_target_hours(prices, self.strategy_config)
+
+        if self.strategy_name == 'valley_detection':
+            # For valley detection, store all target hours in a single period
+            if target_hours:
+                # Find the price for each target hour
+                hour_prices = {h: p for h, p in prices}
+                avg_price = sum(hour_prices.get(h, 0) for h in target_hours) / len(target_hours)
+
+                # Store as list of (hour, price) tuples in target field
+                self.periods[0]['target'] = [(h, hour_prices.get(h, 0)) for h in target_hours]
+                self.periods[0]['target_hours'] = target_hours  # Also store as simple list
+                logging.info(f"Valley detection calculated targets [plug_name={self.name}, hours={target_hours}, avg_price={avg_price:.4f}]")
+            else:
+                self.periods[0]['target'] = []
+                self.periods[0]['target_hours'] = []
+
+        else:
+            # For period strategy, map target hours back to periods
+            for period in self.periods:
+                start_hour = period['start_hour']
+                end_hour = period['end_hour']
+
+                # Find cheapest hour in this period
+                period_prices = [(h, p) for h, p in prices if start_hour <= h <= end_hour]
+                if period_prices:
+                    period['target'] = min(period_prices, key=lambda x: x[1])
+                else:
+                    period['target'] = None
 
     def get_rule_remain_seconds(self):
         result = None

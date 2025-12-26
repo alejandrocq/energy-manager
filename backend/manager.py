@@ -86,24 +86,44 @@ def run_manager_main(stop_event=None):
                 plug.calculate_target_hours(hourly_prices)
 
                 email_message += "<p>"
-                email_message += f"🔌 {plug.name}:<br>"
-                for period in plug.periods:
-                    if not period['target']:
-                        continue
+                email_message += f"🔌 {plug.name} ({plug.strategy_name}):<br>"
 
-                    sh = period['start_hour']
-                    eh = period['end_hour']
-                    th, tp = period['target']
-                    rt_h = period['runtime_human']
-                    rt_s = period['runtime_seconds']
-                    email_message += (
-                        f"⬇️💶 Cheapest hour within period ({sh}h - {eh}h): "
-                        f"{th}h - {tp} €/kWh<br>"
-                    )
-                    email_message += (
-                        f"⏱️ Plug will run for {rt_h} "
-                        f"({rt_s} seconds) in this period.<br>"
-                    )
+                if plug.strategy_name == 'valley_detection':
+                    # Valley detection: show all target hours
+                    period = plug.periods[0]
+                    target_hours = period.get('target_hours', [])
+                    if target_hours:
+                        hour_prices = {h: p for h, p in hourly_prices}
+                        avg_price = sum(hour_prices.get(h, 0) for h in target_hours) / len(target_hours)
+                        rt_h = period['runtime_human']
+                        rt_s = period['runtime_seconds']
+
+                        email_message += f"⬇️💶 Valley hours: {', '.join(f'{h}h' for h in target_hours)}<br>"
+                        email_message += f"💶 Average price: {avg_price:.4f} €/kWh<br>"
+                        email_message += f"⏱️ Total runtime: {rt_h} ({rt_s} seconds)<br>"
+
+                        # Show device profile info
+                        device_profile = plug.strategy_config.get('device_profile', 'generic')
+                        email_message += f"📊 Profile: {device_profile}<br>"
+                else:
+                    # Period strategy: show each period
+                    for period in plug.periods:
+                        if not period['target']:
+                            continue
+
+                        sh = period['start_hour']
+                        eh = period['end_hour']
+                        th, tp = period['target']
+                        rt_h = period['runtime_human']
+                        rt_s = period['runtime_seconds']
+                        email_message += (
+                            f"⬇️💶 Cheapest hour within period ({sh}h - {eh}h): "
+                            f"{th}h - {tp:.4f} €/kWh<br>"
+                        )
+                        email_message += (
+                            f"⏱️ Plug will run for {rt_h} "
+                            f"({rt_s} seconds) in this period.<br>"
+                        )
                 email_message += "</p>"
 
             try:
