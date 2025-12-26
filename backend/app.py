@@ -31,7 +31,7 @@ class ManagerThread:
 
     def start(self):
         """Start the manager thread."""
-        logging.info("Starting manager thread...")
+        logging.info("Starting manager thread")
         self.thread = threading.Thread(
             target=run_manager_main,
             args=(self.stop_event,),
@@ -41,12 +41,12 @@ class ManagerThread:
 
     def stop(self, timeout: float = 10.0):
         """Stop the manager thread gracefully."""
-        logging.info("Stopping manager thread...")
+        logging.info("Stopping manager thread")
         self.stop_event.set()
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=timeout)
             if self.thread.is_alive():
-                logging.warning("Manager thread did not stop within timeout")
+                logging.warning(f"Manager thread did not stop within timeout [timeout={timeout}]")
             else:
                 logging.info("Manager thread stopped successfully")
 
@@ -59,10 +59,10 @@ class ManagerThread:
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager - handles startup and shutdown."""
     # Startup
-    logging.info("Starting Energy Manager backend...")
+    logging.info("Starting Energy Manager backend")
 
     # Initialize shared plug manager
-    logging.info("Loading plugs from config...")
+    logging.info("Loading plugs from config")
     plug_manager.reload_plugs(enabled_only=False)
 
     manager_thread = ManagerThread()
@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logging.info("Shutting down Energy Manager backend...")
+    logging.info("Shutting down Energy Manager backend")
     manager_thread.stop()
 
 
@@ -175,14 +175,14 @@ async def toggle_enable(address: str):
                     await run_in_threadpool(generate_automatic_schedules, plugs, prices, target_date)
             except Exception as e:
                 # Log error but don't fail the toggle operation
-                print(f"Warning: Failed to regenerate schedules: {e}")
+                logging.warning(f"Failed to regenerate schedules [error={e}]")
         else:
             # Plug switched to manual mode - clear automatic schedules
             try:
                 await run_in_threadpool(clear_automatic_schedules, address)
             except Exception as e:
                 # Log error but don't fail the toggle operation
-                print(f"Warning: Failed to clear schedules: {e}")
+                logging.warning(f"Failed to clear schedules [error={e}]")
 
         return {'status': 'success', 'enabled': enabled}
     except ValueError as e:

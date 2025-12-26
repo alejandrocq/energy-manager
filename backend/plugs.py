@@ -83,7 +83,7 @@ class Plug:
                 if enabled and isinstance(rem, (int, float)) and rem > 0:
                     result = int(rem)
         except Exception as e:
-            logging.error(f"Failed to get countdown rules: {e}")
+            logging.error(f"Failed to get countdown rules [error={e}]")
         return result
 
     def cancel_countdown_rules(self):
@@ -103,9 +103,9 @@ class Plug:
                             'delay': rule.get('delay', 0),
                             'desired_states': rule.get('desired_states', {'on': False})
                         })
-            logging.info(f"Cancelled countdown rules for {self.name}")
+            logging.info(f"Cancelled countdown rules [plug_name={self.name}]")
         except Exception as e:
-            logging.error(f"Failed to cancel countdown rules for {self.name}: {e}")
+            logging.error(f"Failed to cancel countdown rules [plug_name={self.name}, error={e}]")
 
     def get_hourly_energy(self):
         now = datetime.now()
@@ -133,7 +133,7 @@ class Plug:
             else:
                 return None
         except Exception as e:
-            logging.error(f"Failed to get current power: {e}")
+            logging.error(f"Failed to get current power [error={e}]")
             return None
 
 
@@ -163,7 +163,7 @@ class PlugManager:
         with self._lock:
             self._plugs = new_plugs
 
-        logging.info(f"Reloaded {len(new_plugs)} plugs from config")
+        logging.info(f"Reloaded plugs from config [count={len(new_plugs)}]")
 
     def get_plugs(self, enabled_only=False) -> list[Plug]:
         """Get current plugs. Thread-safe read."""

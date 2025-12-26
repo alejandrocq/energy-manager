@@ -17,7 +17,7 @@ def cached_prices(func):
             self._prices_cache = {}
 
         if cache_key in self._prices_cache:
-            logging.info(f"Cache hit for {cache_key}")
+            logging.info(f"Cache hit [key={cache_key}]")
             return self._prices_cache[cache_key]
 
         result = func(self, target_date, *args, **kwargs)
@@ -93,14 +93,14 @@ class OmieProvider(PricesProvider):
 
                 return hourly_prices
             except Exception as e:
-                logging.error(f"Failed to fetch/parse prices: {e}. Retrying in {self.RETRY_TIME_SECONDS}s…")
+                logging.error(f"Failed to fetch/parse prices, retrying [error={e}, retry_in_seconds={self.RETRY_TIME_SECONDS}]")
                 retries += 1
                 if retries >= self.MAX_RETRIES:
                     break
                 time.sleep(self.RETRY_TIME_SECONDS)
 
         self.unavailable_until = datetime.now() + timedelta(minutes=15)
-        logging.error(f"Failed to fetch prices after {self.MAX_RETRIES} retries. Unavailable until {self.unavailable_until}.")
+        logging.error(f"Failed to fetch prices after retries [max_retries={self.MAX_RETRIES}, unavailable_until={self.unavailable_until}]")
         return []
 
 
