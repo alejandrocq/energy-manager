@@ -7,7 +7,17 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import manager as m
+
+from config import get_provider
+from manager import run_manager_main
+from plugs import get_plugs, get_plug_energy, is_plug_enabled, plug_manager, toggle_plug_enabled
+from schedules import (
+    clear_automatic_schedules,
+    create_scheduled_event,
+    delete_scheduled_event,
+    generate_automatic_schedules,
+    get_scheduled_events
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -23,7 +33,7 @@ class ManagerThread:
         """Start the manager thread."""
         logging.info("Starting manager thread...")
         self.thread = threading.Thread(
-            target=m.run_manager_main,
+            target=run_manager_main,
             args=(self.stop_event,),
             daemon=False  # Not daemon - we want clean shutdown
         )
@@ -53,7 +63,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize shared plug manager
     logging.info("Loading plugs from config...")
-    m.plug_manager.reload_plugs(enabled_only=False)
+    plug_manager.reload_plugs(enabled_only=False)
 
     manager_thread = ManagerThread()
     manager_thread.start()
@@ -99,9 +109,9 @@ async def health():
 @app.get('/api/plugs')
 async def plugs():
     out = []
-    prices = await run_in_threadpool(m.get_provider().get_prices, datetime.now())
-    all_schedules = await run_in_threadpool(m.get_scheduled_events)
-    for p in m.get_plugs():
+    prices = await run_in_threadpool(get_provider().get_prices, datetime.now())
+    all_schedules = await run_in_threadpool(get_scheduled_events)
+    for p in get_plugs():
         try:
             st = await run_in_threadpool(p.tapo.get_status)
             tr = await run_in_threadpool(p.get_rule_remain_seconds)
@@ -141,7 +151,7 @@ async def plugs():
 @app.get('/api/plugs/{address}/energy')
 async def plug_energy(address: str):
     try:
-        return await run_in_threadpool(m.get_plug_energy, address)
+        return await run_in_threadpool(get_plug_energy, address)
     except StopIteration:
         raise HTTPException(404, 'not found')
 
@@ -149,32 +159,32 @@ async def plug_energy(address: str):
 @app.post('/api/plugs/{address}/toggle_enable')
 async def toggle_enable(address: str):
     try:
-        await run_in_threadpool(m.toggle_plug_enabled, address)
+        await run_in_threadpool(toggle_plug_enabled, address)
 
         # Handle schedule management based on new mode
-        is_enabled = await run_in_threadpool(m.is_plug_enabled, address)
-        if is_enabled:
+        enabled = await run_in_threadpool(is_plug_enabled, address)
+        if enabled:
             # Plug switched to automatic mode - regenerate schedules
             try:
                 target_date = datetime.now()
-                provider = await run_in_threadpool(m.get_provider)
+                provider = await run_in_threadpool(get_provider)
                 prices = await run_in_threadpool(provider.get_prices, target_date)
 
                 if prices:
-                    plugs = await run_in_threadpool(m.get_plugs, False)
-                    await run_in_threadpool(m.generate_automatic_schedules, plugs, prices, target_date)
+                    plugs = await run_in_threadpool(get_plugs, False)
+                    await run_in_threadpool(generate_automatic_schedules, plugs, prices, target_date)
             except Exception as e:
                 # Log error but don't fail the toggle operation
                 print(f"Warning: Failed to regenerate schedules: {e}")
         else:
             # Plug switched to manual mode - clear automatic schedules
             try:
-                await run_in_threadpool(m.clear_automatic_schedules, address)
+                await run_in_threadpool(clear_automatic_schedules, address)
             except Exception as e:
                 # Log error but don't fail the toggle operation
                 print(f"Warning: Failed to clear schedules: {e}")
 
-        return {'status': 'success', 'enabled': is_enabled}
+        return {'status': 'success', 'enabled': enabled}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -183,7 +193,7 @@ async def toggle_enable(address: str):
 
 @app.post('/api/plugs/{address}/on')
 async def plug_on(address: str):
-    p = m.plug_manager.get_plug_by_address(address)
+    p = plug_manager.get_plug_by_address(address)
     if p:
         await run_in_threadpool(p.tapo.turnOn)
         return {'address': address, 'turned_on': True}
@@ -192,7 +202,7 @@ async def plug_on(address: str):
 
 @app.post('/api/plugs/{address}/off')
 async def plug_off(address: str):
-    p = m.plug_manager.get_plug_by_address(address)
+    p = plug_manager.get_plug_by_address(address)
     if p:
         await run_in_threadpool(p.tapo.turnOff)
         return {'address': address, 'turned_off': True}
@@ -206,7 +216,7 @@ class TimerRequest(BaseModel):
 
 @app.post('/api/plugs/{address}/timer')
 async def plug_timer(address: str, request: TimerRequest):
-    p = m.plug_manager.get_plug_by_address(address)
+    p = plug_manager.get_plug_by_address(address)
     if p:
         duration_seconds = request.duration_minutes * 60
         await run_in_threadpool(p.cancel_countdown_rules)
@@ -230,7 +240,7 @@ async def plug_timer(address: str, request: TimerRequest):
 
 @app.get('/api/prices')
 async def get_prices():
-    data = await run_in_threadpool(m.get_provider().get_prices, datetime.now())
+    data = await run_in_threadpool(get_provider().get_prices, datetime.now())
     return [{'hour': h, 'value': p} for h, p in data]
 
 
@@ -242,11 +252,11 @@ class ScheduleRequest(BaseModel):
 
 @app.post('/api/plugs/{address}/schedule')
 async def create_schedule(address: str, request: ScheduleRequest):
-    p = m.plug_manager.get_plug_by_address(address)
+    p = plug_manager.get_plug_by_address(address)
     if p:
         duration_seconds = request.duration_minutes * 60 if request.duration_minutes else None
         event = await run_in_threadpool(
-            m.create_scheduled_event,
+            create_scheduled_event,
             address,
             p.name,
             request.target_datetime,
@@ -259,13 +269,13 @@ async def create_schedule(address: str, request: ScheduleRequest):
 
 @app.get('/api/plugs/{address}/schedules')
 async def get_schedules(address: str):
-    schedules = await run_in_threadpool(m.get_scheduled_events, address)
+    schedules = await run_in_threadpool(get_scheduled_events, address)
     return schedules
 
 
 @app.delete('/api/plugs/{address}/schedules/{schedule_id}')
 async def delete_schedule(address: str, schedule_id: str):
-    deleted = await run_in_threadpool(m.delete_scheduled_event, schedule_id)
+    deleted = await run_in_threadpool(delete_scheduled_event, schedule_id)
     if deleted:
         return {'status': 'success', 'schedule_id': schedule_id}
     raise HTTPException(404, 'Schedule not found')
@@ -276,19 +286,19 @@ async def recalculate_schedules():
     """Force recalculation of automatic schedules based on current prices."""
     try:
         target_date = datetime.now()
-        provider = await run_in_threadpool(m.get_provider)
+        provider = await run_in_threadpool(get_provider)
         prices = await run_in_threadpool(provider.get_prices, target_date)
 
         if not prices:
             raise HTTPException(500, 'No price data available')
 
-        plugs = await run_in_threadpool(m.get_plugs, False)
-        await run_in_threadpool(m.generate_automatic_schedules, plugs, prices, target_date)
+        plugs = await run_in_threadpool(get_plugs, False)
+        await run_in_threadpool(generate_automatic_schedules, plugs, prices, target_date)
 
         return {
             'status': 'success',
             'message': f'Automatic schedules recalculated for {target_date.date()}',
-            'schedules_count': len(await run_in_threadpool(m.get_scheduled_events))
+            'schedules_count': len(await run_in_threadpool(get_scheduled_events))
         }
     except Exception as e:
         raise HTTPException(500, f'Failed to recalculate schedules: {str(e)}')
