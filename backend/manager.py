@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import time
 from datetime import datetime
@@ -10,7 +9,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, config, get_provider
+from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, config, get_provider, logger
 from notifications import send_email
 from plugs import get_plugs, plug_manager
 from schedules import generate_automatic_schedules, process_scheduled_events
@@ -50,7 +49,7 @@ def run_manager_main(stop_event=None):
 
         if config_changed or states_changed:
             if config_changed:
-                logging.info(f"Config file changed, recalculating prices [path={CONFIG_FILE_PATH}]")
+                logger.info(f"Config file changed, recalculating prices [path={CONFIG_FILE_PATH}]")
                 last_config_mtime = current_config_mtime
                 config.read(CONFIG_FILE_PATH)
                 manager_from_email = config.get('email', 'from_email')
@@ -59,7 +58,7 @@ def run_manager_main(stop_event=None):
                 target_date = None  # Force reloading prices
 
             if states_changed:
-                logging.info(f"Plug states file changed, reloading plugs [path={PLUG_STATES_FILE_PATH}]")
+                logger.info(f"Plug states file changed, reloading plugs [path={PLUG_STATES_FILE_PATH}]")
                 last_states_mtime = current_states_mtime
 
             # Always reload shared plugs when either file changes
@@ -70,11 +69,11 @@ def run_manager_main(stop_event=None):
             current_date = target_date.strftime("%Y%m%d")
             current_date_on_file = target_date.strftime("%Y;%m;%d")
 
-            logging.info(f"Loading prices data [date={target_date.date()}]")
+            logger.info(f"Loading prices data [date={target_date.date()}]")
 
             hourly_prices = provider.get_prices(target_date)
             if not hourly_prices:
-                logging.warning(f"No prices data available, skipping email [date={target_date.date()}]")
+                logger.warning(f"No prices data available, skipping email [date={target_date.date()}]")
                 continue
 
             email_message = f"<p>💶🔋 Electricity prices for {target_date.date()}:</p>"
@@ -138,7 +137,7 @@ def run_manager_main(stop_event=None):
                 manager_to_email,
                 True
             )
-            logging.info(f"Downloaded prices data and sent email [date={target_date.date()}]")
+            logger.info(f"Downloaded prices data and sent email [date={target_date.date()}]")
 
             # Generate automatic schedules for enabled plugs
             generate_automatic_schedules(plugs, hourly_prices, target_date)
@@ -152,7 +151,7 @@ def run_manager_main(stop_event=None):
             try:
                 time.sleep(30)
             except KeyboardInterrupt:
-                logging.info("Exiting")
+                logger.info("Exiting")
                 break
         else:
             for _ in range(30):

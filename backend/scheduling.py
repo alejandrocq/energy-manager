@@ -4,6 +4,9 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+# Get centralized logger (configured in config.py)
+logger = logging.getLogger("energy_manager")
+
 
 @dataclass
 class PeriodConfig:
@@ -92,7 +95,7 @@ class PeriodStrategy(SchedulingStrategy):
             strategy_data: PeriodStrategyData with configured periods
         """
         if not isinstance(strategy_data, PeriodStrategyData):
-            logging.error(f"Invalid strategy data type for PeriodStrategy [type={type(strategy_data)}]")
+            logger.error(f"Invalid strategy data type for PeriodStrategy [type={type(strategy_data)}]")
             return []
 
         target_hours = []
@@ -155,7 +158,7 @@ class ValleyDetectionStrategy(SchedulingStrategy):
             strategy_data: ValleyDetectionStrategyData with device profile and runtime config
         """
         if not isinstance(strategy_data, ValleyDetectionStrategyData):
-            logging.error(f"Invalid strategy data type for ValleyDetectionStrategy [type={type(strategy_data)}]")
+            logger.error(f"Invalid strategy data type for ValleyDetectionStrategy [type={type(strategy_data)}]")
             return []
 
         device_profile = strategy_data.device_profile
@@ -166,7 +169,7 @@ class ValleyDetectionStrategy(SchedulingStrategy):
 
         profile = self.DEVICE_PROFILES.get(device_profile)
         if not profile:
-            logging.warning(f"Unknown device profile, using generic [profile={device_profile}]")
+            logger.warning(f"Unknown device profile, using generic [profile={device_profile}]")
             profile = self.DEVICE_PROFILES['generic']
 
         # Determine windows to use
@@ -211,7 +214,7 @@ class ValleyDetectionStrategy(SchedulingStrategy):
                         int(hours_per_cycle)
                     )
                     target_hours.extend(valley_hours)
-                    logging.info(f"Water heater {window['name']} valley [hours={valley_hours}]")
+                    logger.info(f"Water heater {window['name']} valley [hours={valley_hours}]")
 
         # For radiator: find N valleys distributed across day
         elif device_profile == 'radiator':
@@ -284,7 +287,7 @@ class ValleyDetectionStrategy(SchedulingStrategy):
         if not best_block:
             sorted_by_price = sorted(sorted_prices, key=lambda x: x[1])
             best_block = sorted([h for h, p in sorted_by_price[:block_size]])
-            logging.warning(f"No contiguous block found, using cheapest hours [hours={best_block}]")
+            logger.warning(f"No contiguous block found, using cheapest hours [hours={best_block}]")
 
         return best_block
 
@@ -304,7 +307,7 @@ class ValleyDetectionStrategy(SchedulingStrategy):
 
             return [{'name': 'custom', 'start': start_hour, 'end': end_hour}]
         except Exception as e:
-            logging.error(f"Failed to parse time constraints [constraints={constraints}, error={e}]")
+            logger.error(f"Failed to parse time constraints [constraints={constraints}, error={e}]")
             return [{'name': 'full_day', 'start': 0, 'end': 23}]
 
 
@@ -324,7 +327,7 @@ def create_strategy(strategy_name: str) -> SchedulingStrategy:
 
     strategy_class = strategies.get(strategy_name)
     if not strategy_class:
-        logging.warning(f"Unknown strategy, defaulting to period [strategy={strategy_name}]")
+        logger.warning(f"Unknown strategy, defaulting to period [strategy={strategy_name}]")
         strategy_class = PeriodStrategy
 
     return strategy_class()

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import logging
 import smtplib
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from config import CHART_FILE_NAME
+from config import CHART_FILE_NAME, logger
 
 
 def send_email(subject, content, from_email, to_email, attach_chart=False):
@@ -34,4 +33,4 @@ def send_email(subject, content, from_email, to_email, attach_chart=False):
         with smtplib.SMTP('postfix') as smtp_server:
             smtp_server.sendmail(from_email, to_email, mime_message.as_string())
     except Exception as err:
-        logging.error(f"Failed to send email [error={err}]")
+        logger.error(f"Failed to send email [error={err}]")

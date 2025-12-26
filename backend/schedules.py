@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from config import SCHEDULED_FILE_PATH
+from config import SCHEDULED_FILE_PATH, logger
 from notifications import send_email
 from plugs import Plug, plug_manager
 from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
@@ -46,7 +45,7 @@ def clear_automatic_schedules(plug_address: str):
     ]
 
     _save_scheduled_events(events)
-    logging.info(f"Cleared automatic schedules [plug_address={plug_address}]")
+    logger.info(f"Cleared automatic schedules [plug_address={plug_address}]")
 
 
 def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: str, desired_state: bool, duration_seconds: int | None = None, event_type: str = "manual", source_period: int | None = None):
@@ -86,7 +85,7 @@ def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: s
     }
     events.append(event)
     _save_scheduled_events(events)
-    logging.info(f"Created scheduled event [event_type={event_type}, event={event}]")
+    logger.info(f"Created scheduled event [event_type={event_type}, event={event}]")
     return event
 
 
@@ -105,7 +104,7 @@ def delete_scheduled_event(event_id: str):
         if event['id'] == event_id:
             event['status'] = 'cancelled'
             event['cancelled_at'] = datetime.now(timezone.utc).isoformat()
-            logging.info(f"Cancelled scheduled event [event={event}]")
+            logger.info(f"Cancelled scheduled event [event={event}]")
             _save_scheduled_events(events)
             return True
     return False
@@ -144,17 +143,17 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
                         plug.tapo.turnOff()
                         state_str = "OFF"
 
-                    logging.info(f"Executed scheduled event [plug_name={plug_name}, timestamp={now}, state={state_str}]")
+                    logger.info(f"Executed scheduled event [plug_name={plug_name}, timestamp={now}, state={state_str}]")
 
                     # If duration specified, set opposite state timer
                     duration_seconds = event.get('duration_seconds')
                     if duration_seconds and duration_seconds > 0:
                         if desired_state:
                             plug.tapo.turnOffWithDelay(duration_seconds)
-                            logging.info(f"Plug will turn OFF [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
+                            logger.info(f"Plug will turn OFF [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
                         else:
                             plug.tapo.turnOnWithDelay(duration_seconds)
-                            logging.info(f"Plug will turn ON [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
+                            logger.info(f"Plug will turn ON [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
 
                     # Send email notification
                     email_message = f"🔌 Plug {plug_name} has been turned {state_str} per scheduled event at {now}."
@@ -173,13 +172,13 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
                     modified = True
 
                 except Exception as err:
-                    logging.error(f"Error executing scheduled event [plug_name={plug_name}, error={err}]")
+                    logger.error(f"Error executing scheduled event [plug_name={plug_name}, error={err}]")
                     event['status'] = 'failed'
                     event['error'] = str(err)
                     event['failed_at'] = now.isoformat()
                     modified = True
             else:
-                logging.error(f"Plug not found for scheduled event [plug_address={plug_address}]")
+                logger.error(f"Plug not found for scheduled event [plug_address={plug_address}]")
                 event['status'] = 'failed'
                 event['error'] = 'Plug not found'
                 event['failed_at'] = now.isoformat()
@@ -211,7 +210,7 @@ def _cleanup_old_events():
 
     if len(active_events) != len(events):
         _save_scheduled_events(active_events)
-        logging.info(f"Cleaned up old scheduled events [count={len(events) - len(active_events)}]")
+        logger.info(f"Cleaned up old scheduled events [count={len(events) - len(active_events)}]")
 
 
 def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, float]], target_date: datetime):
@@ -241,7 +240,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
     # Generate new automatic schedules
     for plug in plugs:
         if not plug.enabled:
-            logging.info(f"Skipping automatic schedule generation [plug_name={plug.name}, reason=manual_mode]")
+            logger.info(f"Skipping automatic schedule generation [plug_name={plug.name}, reason=manual_mode]")
             continue
 
         plug.calculate_target_hours(prices)
@@ -302,7 +301,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
 
                 # Skip if target time is in the past
                 if target_dt < now:
-                    logging.info(f"Skipping past schedule [plug_name={plug.name}, valley={valley_hours_str}, target_time={target_dt}]")
+                    logger.info(f"Skipping past schedule [plug_name={plug.name}, valley={valley_hours_str}, target_time={target_dt}]")
                     continue
 
                 # Create automatic schedule event for this valley
@@ -319,7 +318,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
                     'created_at': now.isoformat()
                 }
                 events.append(event)
-                logging.info(f"Created automatic schedule [plug_name={plug.name}, strategy=valley_detection, valley={valley_hours_str}, avg_price={avg_price:.4f}, duration={timedelta(seconds=runtime_per_valley)}]")
+                logger.info(f"Created automatic schedule [plug_name={plug.name}, strategy=valley_detection, valley={valley_hours_str}, avg_price={avg_price:.4f}, duration={timedelta(seconds=runtime_per_valley)}]")
 
         elif isinstance(plug.strategy_data, PeriodStrategyData):
             # For period strategy (existing behavior)
@@ -349,7 +348,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
 
                 # Skip if target time is in the past
                 if target_dt < now:
-                    logging.info(f"Skipping past schedule [plug_name={plug.name}, period={period_idx+1}, target_time={target_dt}]")
+                    logger.info(f"Skipping past schedule [plug_name={plug.name}, period={period_idx+1}, target_time={target_dt}]")
                     continue
 
                 # Create automatic schedule event
@@ -366,7 +365,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
                     'created_at': now.isoformat()
                 }
                 events.append(event)
-                logging.info(f"Created automatic schedule [plug_name={plug.name}, strategy=period, period={period_idx+1}, hour={target_hour}, price={target_price:.4f}, duration={timedelta(seconds=runtime_seconds)}]")
+                logger.info(f"Created automatic schedule [plug_name={plug.name}, strategy=period, period={period_idx+1}, hour={target_hour}, price={target_price:.4f}, duration={timedelta(seconds=runtime_seconds)}]")
 
     _save_scheduled_events(events)
-    logging.info(f"Generated automatic schedules [date={target_date.date()}]")
+    logger.info(f"Generated automatic schedules [date={target_date.date()}]")

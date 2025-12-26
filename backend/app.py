@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -8,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from config import get_provider
+from config import get_provider, logger
 from manager import run_manager_main
 from plugs import get_plugs, get_plug_energy, is_plug_enabled, plug_manager, toggle_plug_enabled
 from schedules import (
@@ -18,8 +17,6 @@ from schedules import (
     generate_automatic_schedules,
     get_scheduled_events
 )
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class ManagerThread:
@@ -31,7 +28,7 @@ class ManagerThread:
 
     def start(self):
         """Start the manager thread."""
-        logging.info("Starting manager thread")
+        logger.info("Starting manager thread")
         self.thread = threading.Thread(
             target=run_manager_main,
             args=(self.stop_event,),
@@ -41,14 +38,14 @@ class ManagerThread:
 
     def stop(self, timeout: float = 10.0):
         """Stop the manager thread gracefully."""
-        logging.info("Stopping manager thread")
+        logger.info("Stopping manager thread")
         self.stop_event.set()
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=timeout)
             if self.thread.is_alive():
-                logging.warning(f"Manager thread did not stop within timeout [timeout={timeout}]")
+                logger.warning(f"Manager thread did not stop within timeout [timeout={timeout}]")
             else:
-                logging.info("Manager thread stopped successfully")
+                logger.info("Manager thread stopped successfully")
 
     def is_alive(self) -> bool:
         """Check if manager thread is running."""
@@ -59,10 +56,10 @@ class ManagerThread:
 async def lifespan(app: FastAPI):
     """FastAPI lifespan manager - handles startup and shutdown."""
     # Startup
-    logging.info("Starting Energy Manager backend")
+    logger.info("Starting Energy Manager backend")
 
     # Initialize shared plug manager
-    logging.info("Loading plugs from config")
+    logger.info("Loading plugs from config")
     plug_manager.reload_plugs(enabled_only=False)
 
     manager_thread = ManagerThread()
@@ -74,7 +71,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logging.info("Shutting down Energy Manager backend")
+    logger.info("Shutting down Energy Manager backend")
     manager_thread.stop()
 
 
@@ -163,14 +160,14 @@ async def toggle_enable(address: str):
                     await run_in_threadpool(generate_automatic_schedules, plugs, prices, target_date)
             except Exception as e:
                 # Log error but don't fail the toggle operation
-                logging.warning(f"Failed to regenerate schedules [error={e}]")
+                logger.warning(f"Failed to regenerate schedules [error={e}]")
         else:
             # Plug switched to manual mode - clear automatic schedules
             try:
                 await run_in_threadpool(clear_automatic_schedules, address)
             except Exception as e:
                 # Log error but don't fail the toggle operation
-                logging.warning(f"Failed to clear schedules [error={e}]")
+                logger.warning(f"Failed to clear schedules [error={e}]")
 
         return {'status': 'success', 'enabled': enabled}
     except ValueError as e:

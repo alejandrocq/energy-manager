@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import configparser
 import json
-import logging
 import re
 import threading
 from datetime import datetime
 
 from PyP100 import PyP100, MeasureInterval
 
-from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config
+from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config, logger
 from scheduling import (
     create_strategy,
     PeriodConfig,
@@ -129,7 +128,7 @@ class Plug:
         if self.strategy_name == 'valley_detection':
             # For valley detection, store target hours in strategy data
             if not isinstance(self.strategy_data, ValleyDetectionStrategyData):
-                logging.error(f"Invalid strategy data type for valley_detection [type={type(self.strategy_data)}]")
+                logger.error(f"Invalid strategy data type for valley_detection [type={type(self.strategy_data)}]")
                 return
 
             if target_hours:
@@ -139,7 +138,7 @@ class Plug:
                 self.strategy_data.target_prices = {h: hour_prices.get(h, 0) for h in target_hours}
 
                 avg_price = self.strategy_data.get_average_price()
-                logging.info(f"Valley detection calculated targets [plug_name={self.name}, hours={target_hours}, avg_price={avg_price:.4f}]")
+                logger.info(f"Valley detection calculated targets [plug_name={self.name}, hours={target_hours}, avg_price={avg_price:.4f}]")
             else:
                 self.strategy_data.target_hours = []
                 self.strategy_data.target_prices = {}
@@ -147,7 +146,7 @@ class Plug:
         else:
             # For period strategy, map target hours back to periods
             if not isinstance(self.strategy_data, PeriodStrategyData):
-                logging.error(f"Invalid strategy data type for period [type={type(self.strategy_data)}]")
+                logger.error(f"Invalid strategy data type for period [type={type(self.strategy_data)}]")
                 return
 
             for period in self.strategy_data.periods:
@@ -175,7 +174,7 @@ class Plug:
                 if enabled and isinstance(rem, (int, float)) and rem > 0:
                     result = int(rem)
         except Exception as e:
-            logging.error(f"Failed to get countdown rules [error={e}]")
+            logger.error(f"Failed to get countdown rules [error={e}]")
         return result
 
     def cancel_countdown_rules(self):
@@ -195,9 +194,9 @@ class Plug:
                             'delay': rule.get('delay', 0),
                             'desired_states': rule.get('desired_states', {'on': False})
                         })
-            logging.info(f"Cancelled countdown rules [plug_name={self.name}]")
+            logger.info(f"Cancelled countdown rules [plug_name={self.name}]")
         except Exception as e:
-            logging.error(f"Failed to cancel countdown rules [plug_name={self.name}, error={e}]")
+            logger.error(f"Failed to cancel countdown rules [plug_name={self.name}, error={e}]")
 
     def get_hourly_energy(self):
         now = datetime.now()
@@ -225,7 +224,7 @@ class Plug:
             else:
                 return None
         except Exception as e:
-            logging.error(f"Failed to get current power [error={e}]")
+            logger.error(f"Failed to get current power [error={e}]")
             return None
 
 
@@ -255,7 +254,7 @@ class PlugManager:
         with self._lock:
             self._plugs = new_plugs
 
-        logging.info(f"Reloaded plugs from config [count={len(new_plugs)}]")
+        logger.info(f"Reloaded plugs from config [count={len(new_plugs)}]")
 
     def get_plugs(self, enabled_only=False) -> list[Plug]:
         """Get current plugs. Thread-safe read."""
