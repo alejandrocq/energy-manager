@@ -34,26 +34,64 @@ The application uses a **gateway pattern** with four Docker services:
 
 ### Backend Architecture
 
-**Core Components:**
+The backend is organized into focused modules with clear separation of concerns:
 
-- `backend/app.py`: FastAPI REST API with async endpoints using ThreadPoolExecutor for Tapo library calls (synchronous)
-- `backend/manager.py`: Main scheduling engine and plug management
-  - Background loop polls every 30 seconds
-  - Handles price fetching, schedule calculation, plug control, and scheduled events
+**Core Modules:**
+
+- `backend/app.py`: FastAPI REST API with async endpoints
+  - Uses ThreadPoolExecutor for synchronous Tapo library calls
+  - Manages manager thread lifecycle via FastAPI lifespan events
+  - Per-plug locking to prevent concurrent access errors
+  - `/api/health` endpoint monitors manager thread status
+
+- `backend/manager.py`: Main orchestration loop (152 lines)
+  - Background thread that polls every 30 seconds
+  - Coordinates price fetching, schedule generation, and plug control
   - Config hot-reload on file modification
-  - Persistent scheduled events in `data/schedules.json`
-- `backend/providers.py`: Price provider abstraction with caching decorator
+  - Delegates responsibilities to specialized modules
+
+- `backend/config.py`: Configuration and constants (21 lines)
+  - Centralized logging setup ("energy_manager" logger)
+  - Configuration file parsing
+  - Provider factory function
+
+- `backend/plugs.py`: Plug and PlugManager classes (231 lines)
+  - Plug class wraps PyP100 Tapo devices with thread-safe locking
+  - PlugManager singleton maintains shared plug instances
+  - Prevents stale plug state between API and manager thread
+
+- `backend/schedules.py`: Scheduling system (317 lines)
+  - User-created scheduled events stored in `data/schedules.json`
+  - Automatic schedule generation using strategies
+  - Event statuses: pending, completed, cancelled, failed
+  - Old events (>7 days) automatically cleaned up
+
+- `backend/scheduling.py`: Strategy pattern for schedule calculation
+  - Abstract base class for scheduling strategies
+  - PeriodStrategy: Find cheapest hours within time windows
+  - ValleyDetectionStrategy: Find valleys for multi-window devices
+  - Device profiles: water_heater, radiator, generic
+  - Typed strategy data classes for compile-time validation
+
+- `backend/notifications.py`: Email notifications (34 lines)
+  - Daily price summary emails
+  - Plug action notifications
+  - Sends via internal postfix service
+
+- `backend/providers.py`: Price provider abstraction
   - Currently supports OMIE (Spanish electricity market)
-  - Cached results by date to avoid redundant API calls
+  - `@cached_prices` decorator caches results by date
+  - Backoff mechanism for temporary failures
 
 **Data Flow:**
 
-1. Manager loads `config.properties` (hot-reloadable)
-2. Provider fetches daily prices from external API
-3. For each enabled plug, manager calculates cheapest hours within configured periods
-4. At target hours, plugs are turned on with countdown timers
-5. Email notifications sent via postfix for daily summaries and plug actions
-6. User-created schedules stored in `data/schedules.json` and processed by manager loop
+1. Manager loads `config.properties` (hot-reloadable, updates shared PlugManager state)
+2. Provider fetches daily prices from external API (cached by date)
+3. Scheduling strategies calculate target hours for enabled plugs
+4. Automatic schedules generated and stored in `data/schedules.json`
+5. Manager loop processes pending schedules at target times
+6. Plug operations use per-plug locks to prevent concurrent access
+7. Email notifications sent via postfix for daily summaries and plug actions
 
 **Plug Control:**
 
@@ -186,11 +224,22 @@ Access via http://localhost:4000 (or custom `GATEWAY_PORT`)
 
 ### Development without Docker
 
-For faster iteration, run services locally instead of Docker:
+**IMPORTANT:** Always use the `./dev.sh` script for local development. This is the standard and only supported way to run the development environment.
 
-1. Use `./dev.sh` to start all services (unified backend, frontend)
-2. Frontend (Vite) proxies `/api` to backend API at http://localhost:8000
-3. Ensure backend config and data directories exist with Tapo credentials and pricing provider config
+The script handles:
+- Virtual environment setup and dependencies
+- Starting unified backend (API + Manager) on port 8000
+- Starting frontend dev server on port 5173
+- Process lifecycle management and cleanup
+- Logging to `/tmp/energy-manager-dev/*.log`
+
+**Do not run backend or frontend manually** unless you have a specific reason for isolated testing.
+
+Access:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+
+To stop services: `kill $BACKEND_PID $FRONTEND_PID`
 
 **Testing with Chrome DevTools:**
 If Chrome DevTools are available, you can test the application by:
@@ -203,21 +252,21 @@ If Chrome DevTools are available, you can test the application by:
 **Commit Message Format:**
 - Use concise, descriptive commit messages in imperative mood (e.g., "Add feature" not "Added feature")
 - First line should be a summary (50-72 characters)
+- **Body is REQUIRED and must use bullet points** (2-5 bullets maximum)
 - No signatures or co-author tags unless explicitly requested
 - Keep commits focused on a single logical change
-- Add line break between summary and body if body is included
 
 **Commit Message Structure:**
-- Summary: Brief description of what changed (required)
-- Body (optional): If needed, explain why the change was made, not what changed
-- Maximum 5 bullet points if listing changes
+- **Summary:** Brief description of what changed (required)
+- **Body:** ALWAYS include bullet points explaining the changes (required, 2-5 bullets)
+  - Focus on WHAT changed, not why
+  - Be concise and specific
+  - Each bullet should describe one logical change
 
 **Examples:**
 
 Good commit messages:
 ```
-Standardize logging format to structured pattern: MESSAGE [param=value]
-
 Refactor backend into focused modules for better organization
 
 - Split manager logic into separate modules
@@ -225,6 +274,10 @@ Refactor backend into focused modules for better organization
 - Create plug manager singleton for shared state
 
 Add countdown timer support for manual plug control
+
+- Add timer endpoint to API with duration validation
+- Implement countdown logic in manager loop
+- Update frontend with timer selector component
 ```
 
 Bad commit messages:
@@ -238,10 +291,11 @@ Updated files
 - Updated schedules.py
 - Fixed providers.py
 - Refactored plugs.py
-- Added new logging format
-- Removed old logs
+- Added new logging format    <-- MORE THAN 5 BULLETS
 
 🤖 Generated with Claude Code <-- DO NOT ADD SIGNATURES
+
+Standardize logging format   <-- NO BODY WITH BULLETS
 ```
 
 ## Configuration
@@ -286,22 +340,27 @@ The API uses `asyncio` with `ThreadPoolExecutor` because the PyP100 Tapo library
 
 ### Manager Loop Logic
 
-The manager runs an infinite loop with 30-second intervals:
-1. Check config file modification time, reload if changed
-2. Once per day: fetch prices, calculate schedules, send daily email
-3. Every iteration: check if current hour matches target hour for any plug → turn on with timer
-4. Every iteration: process pending scheduled events
+The manager runs in a background thread with 30-second intervals:
+1. Check config file modification time, reload if changed (updates shared PlugManager)
+2. Once per day: fetch prices, generate automatic schedules, send daily email
+3. Every iteration: process pending scheduled events (both automatic and manual)
+4. Plug operations acquire per-plug locks to prevent concurrent access errors
 5. Handle plug errors by reinitializing session
+6. Stop gracefully on shutdown signal (via threading.Event)
 
 ### Scheduled Events
 
-User-created schedules are stored in `data/schedules.json` with statuses:
+Both automatic and manual schedules are stored in `data/schedules.json` with statuses:
 - `pending`: Not yet executed
 - `completed`: Successfully executed
 - `cancelled`: User cancelled
 - `failed`: Execution error
 
-Old events (>7 days) are automatically cleaned up.
+**Schedule Types:**
+- **Automatic:** Generated daily by scheduling strategies based on electricity prices
+- **Manual:** User-created via API for specific future times
+
+Old events (>7 days) are automatically cleaned up. Automatic schedules are regenerated daily and old ones are cleared.
 
 ### Price Provider Pattern
 
@@ -311,13 +370,43 @@ Providers implement `PricesProvider` abstract class:
 
 The `@cached_prices` decorator caches results by date to avoid redundant API calls.
 
+### Scheduling Strategy Pattern
+
+Strategies implement the abstract `SchedulingStrategy` class to calculate optimal plug schedules:
+
+**PeriodStrategy:**
+- Finds cheapest hours within configured time windows
+- Each period has start/end hours and runtime duration
+- Selects the cheapest contiguous block within each period
+
+**ValleyDetectionStrategy:**
+- Groups contiguous cheap hours into "valleys"
+- Useful for devices needing multiple heating windows (water heaters)
+- Device profiles define valley selection criteria
+- Prevents overlapping schedules in adjacent hours
+
+**Typed Strategy Data:**
+- `PeriodStrategyData`: Configuration for period-based scheduling
+- `ValleyDetectionStrategyData`: Configuration for valley detection
+- Compile-time validation via dataclasses
+
 ## Testing
 
 No tests currently configured. When adding tests, set up a test framework (pytest for Python, Vitest/Jest for React) and document test commands here.
 
 ## Python Code Style
 
-**Organization:** Follow patterns in `backend/app.py` and `backend/manager.py`.
+**Organization:** Follow the modular architecture established in the backend:
+- `app.py`: API endpoints and manager thread lifecycle
+- `manager.py`: Orchestration loop only
+- `config.py`: Configuration and logging setup
+- `plugs.py`: Plug and PlugManager classes
+- `schedules.py`: Schedule management and execution
+- `scheduling.py`: Strategy pattern for schedule calculation
+- `notifications.py`: Email notification functions
+- `providers.py`: Price provider abstraction
+
+Keep modules focused on single responsibilities. Avoid circular dependencies.
 
 **Imports:** Standard library → third-party → local modules (alphabetical within each group). Use `from module import` for commonly used items, `import module` for others.
 
@@ -353,12 +442,16 @@ class TimerRequest(BaseModel):
 **Patterns:**
 - Decorators: Use functools.wraps for wrapper functions
 - Caching: Implement @cached_prices decorator for memoization by date
-- Abstract base classes: Use ABC for provider interfaces
+- Abstract base classes: Use ABC for provider and strategy interfaces
+- Strategy pattern: Implement `SchedulingStrategy` ABC for schedule calculation
+- Singleton pattern: PlugManager maintains single shared plug instances
 - Configuration: Use configparser.ConfigParser for .properties files
-- Data persistence: JSON for simple data structures (plug states, schedules)
+- Data persistence: JSON for simple data structures (schedules)
 - Time zones: Always store datetimes as UTC, convert to local for display
+- Thread safety: Use threading.Lock for shared resource access
+- Context managers: Use `with` statements for lock acquisition
 
-**Logging:** Use logging module with INFO level: `logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')`
+**Logging:** Use centralized logger: `logger = logging.getLogger("energy_manager")`. The logger is configured in `config.py` and works seamlessly with uvicorn. Use structured format: `MESSAGE [param=value]`
 
 **Docstrings:** No docstrings for existing functions. Add docstrings only when creating new public functions.
 
@@ -440,11 +533,50 @@ import {Modal} from "./Modal";
 - Handle missing/null data gracefully
 - Set loading states during async operations
 
+## Change Documentation
+
+**CRITICAL:** All important changes, fixes, and improvements MUST be documented in `IMPLEMENTATION.md`.
+
+**What to document:**
+- Bug fixes (describe the issue and solution)
+- New features or functionality
+- Architecture changes or refactoring
+- Performance optimizations
+- Breaking changes or API modifications
+- Security improvements
+- Dependency updates that affect behavior
+
+**Documentation format in IMPLEMENTATION.md:**
+```markdown
+## [Date] - Brief title
+
+**Problem:**
+- Description of the issue or requirement
+
+**Solution:**
+- What was implemented/changed
+- Key technical decisions
+
+**Impact:**
+- What this affects (backend, frontend, config, etc.)
+- Any breaking changes or migration steps needed
+```
+
+**When NOT to document:**
+- Trivial typo fixes
+- Code formatting or style changes
+- Internal refactoring with no external impact
+- Documentation updates themselves
+
+Keep `IMPLEMENTATION.md` as a chronological log of significant changes for easier project maintenance and onboarding.
+
 ## Important Notes
 
 - **No authentication**: Deploy behind reverse proxy with auth or in protected network
-- **Config hot-reload**: Changes to `config.properties` are detected and applied without restart
+- **Config hot-reload**: Changes to `config.properties` are detected and applied without restart (updates shared PlugManager state)
 - **Email via postfix**: Backend always sends emails to internal `postfix` service
 - **Tapo local protocol**: Plugs must be on same LAN, uses local API not cloud
 - **Gateway port**: Configurable via `GATEWAY_PORT` env var (default: 4000)
 - **Time zones**: Container timezone set via `TZ` env var in `run.sh`
+- **Thread safety**: Per-plug locking ensures API and manager thread don't corrupt PyP100 session state
+- **Shared state**: PlugManager singleton ensures API and manager use same Plug instances

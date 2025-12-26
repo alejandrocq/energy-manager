@@ -1,0 +1,198 @@
+# Implementation Log
+
+This file documents significant changes, fixes, and improvements to the Energy Manager project.
+
+---
+
+## 2025-12-25 - Unify backend to run API and Manager in single process
+
+**Problem:**
+- Backend ran as two separate processes (API and Manager)
+- Separate Plug instances caused stale state issues
+- Difficult to coordinate between API and Manager
+- Two PIDs to manage during development
+
+**Solution:**
+- Manager runs in background thread within uvicorn process
+- FastAPI lifespan events manage manager thread lifecycle
+- Shared PlugManager ensures API and Manager use same instances
+- Added /api/health endpoint to monitor manager thread
+- Config hot-reload updates shared plug instances atomically
+- Consolidated into single app.py file
+
+**Impact:**
+- Backend: Single process to manage (one PID)
+- Shared in-memory state eliminates stale plug instances
+- Better coordination between API and Manager
+- Simpler deployment and debugging
+
+---
+
+## 2025-12-25 - Consolidate documentation into AGENTS.md
+
+**Problem:**
+- Documentation split between CLAUDE.md and AGENTS.md
+- Duplication made updates error-prone
+- Unclear which file was source of truth
+
+**Solution:**
+- Moved all documentation to AGENTS.md
+- Replaced CLAUDE.md with @AGENTS.md reference
+- Merged architecture, API docs, and code style guidelines
+
+**Impact:**
+- Documentation: Single source of truth
+- Easier maintenance
+- No duplication
+
+---
+
+## 2025-12-26 - Refactor backend into focused modules for better organization
+
+**Problem:**
+- Original manager.py was 722 lines handling multiple responsibilities
+- Difficult to maintain and test
+- No clear separation of concerns
+
+**Solution:**
+- Split manager.py into 5 specialized modules
+- config.py: Configuration and constants (21 lines)
+- plugs.py: Plug and PlugManager classes (231 lines)
+- schedules.py: Scheduling system (317 lines)
+- notifications.py: Email notifications (34 lines)
+- manager.py: Orchestration loop only (152 lines, 79% reduction)
+
+**Impact:**
+- Backend: Clear separation of concerns
+- No circular dependencies
+- Better testability and maintainability
+- Each module has single responsibility
+
+---
+
+## 2025-12-26 - Add valley detection scheduling strategy with device profiles
+
+**Problem:**
+- Period-based strategy didn't support devices needing multiple heating windows
+- Water heaters need morning and evening valleys for optimal energy usage
+- No way to prevent overlapping schedules in contiguous cheap hours
+
+**Solution:**
+- Implemented strategy pattern for plug scheduling (period, valley_detection)
+- Added device profiles: water_heater (dual valleys), radiator, generic
+- Group contiguous hours into valleys to prevent overlap
+- Removed redundant target calculation from API endpoint
+
+**Impact:**
+- Backend: New scheduling strategy available for configuration
+- Water heaters can now schedule morning and evening heating optimally
+- Better energy optimization for multi-window devices
+
+**Files added:**
+- `backend/scheduling.py`: Strategy pattern implementation and device profiles
+
+---
+
+## 2025-12-26 - Replace periods dict with typed strategy data classes
+
+**Problem:**
+- Untyped dict structures for strategy data lacked compile-time validation
+- Redundant `strategy_config` dict duplicated data in `strategy_data`
+- No IDE support or type safety for strategy configurations
+
+**Solution:**
+- Created `PeriodStrategyData` and `ValleyDetectionStrategyData` dataclasses
+- Removed redundant strategy_config dict
+- Strategies now accept typed StrategyData instead of config dicts
+
+**Impact:**
+- Backend: Improved type safety and IDE support
+- Better compile-time validation
+- Cleaner code with less duplication
+
+**Files modified:**
+- `backend/scheduling.py`: Added strategy data classes
+- Updated strategy implementations to use typed data
+
+---
+
+## 2025-12-26 - Centralize logging configuration to fix uvicorn compatibility
+
+**Problem:**
+- Logging setup conflicted with uvicorn's logging configuration
+- Duplicate log entries appearing in some contexts
+- Inconsistent formatting between API and manager logs
+
+**Solution:**
+- Created named logger in config.py ("energy_manager")
+- Configured logger to work seamlessly with uvicorn
+- All modules now use centralized logger instance
+
+**Impact:**
+- Backend: Consistent logging across API and manager thread
+- Eliminates duplicate logs
+- Better integration with uvicorn's logging system
+
+---
+
+## 2025-12-26 - Fix logger import pattern to prevent stale references
+
+**Problem:**
+- Modules captured incomplete logger references during circular imports
+- Particularly affected schedules.py when called from manager thread
+- Caused logging issues and potential initialization problems
+
+**Solution:**
+- Changed all modules to use `logging.getLogger("energy_manager")`
+- Removed direct logger imports from config module
+- Ensured consistent logger access across all modules
+
+**Impact:**
+- Backend: All modules now use proper logger instance
+- Fixes logging in manager thread context
+- Prevents circular import issues with logging
+
+---
+
+## 2025-12-26 - Add per-plug locking to prevent concurrent access errors
+
+**Problem:**
+- Schedules were failing with 403 Forbidden errors
+- PyP100 library maintains session state that becomes corrupted with concurrent access
+- API endpoints and manager thread accessed same Plug instances simultaneously
+
+**Solution:**
+- Added `threading.Lock` to each Plug instance
+- Created `run_plug_operation()` helper in app.py for locked API operations
+- Wrapped all Tapo operations in lock acquisition
+- Used context manager in schedule processing
+
+**Impact:**
+- Backend: All Tapo operations now serialize per device
+- Eliminates 403 Forbidden errors during concurrent operations
+- Allows concurrent operations across different plugs
+
+**Files modified:**
+- `backend/plugs.py`: Added `_lock` attribute and `acquire_lock()` method
+- `backend/app.py`: Added `run_plug_operation()` and updated all endpoints
+- `backend/schedules.py`: Wrapped operations in `with plug.acquire_lock()`
+
+---
+
+## 2025-12-26 - Update documentation standards and commit guidelines
+
+**Problem:**
+- No standard file for tracking implementation changes
+- Commit message format not strictly defined
+- Development environment setup unclear
+
+**Solution:**
+- Renamed TODO.md to IMPLEMENTATION.md as change log
+- Required bullet points (2-5) in all commit messages
+- Mandated use of ./dev.sh for local development
+- Added "Change Documentation" section to AGENTS.md
+
+**Impact:**
+- Documentation: Clear guidelines for change tracking
+- Git: Consistent commit message format
+- Development: Standard workflow for all developers
