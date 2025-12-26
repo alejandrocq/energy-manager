@@ -40,6 +40,7 @@ class Plug:
         self.address = plug_config.get('address')
         self.enabled = enabled
         self.tapo = PyP100.Switchable(self.address, email, password)
+        self._lock = threading.Lock()
 
         # Load scheduling strategy (default to 'period' for backward compatibility)
         strategy_name = plug_config.get('strategy', 'period')
@@ -52,6 +53,10 @@ class Plug:
         else:
             # Default to period strategy (existing behavior)
             self._parse_period_config(plug_config)
+
+    def acquire_lock(self):
+        """Context manager for thread-safe plug operations."""
+        return self._lock
 
     def _parse_period_config(self, plug_config: configparser.SectionProxy):
         """Parse period-based strategy configuration."""

@@ -96,6 +96,14 @@ async def run_in_threadpool(func, *args, **kwargs):
     return await loop.run_in_executor(executor, lambda: func(*args, **kwargs))
 
 
+async def run_plug_operation(plug, func, *args, **kwargs):
+    """Run a plug operation with locking to prevent concurrent access."""
+    def locked_operation():
+        with plug.acquire_lock():
+            return func(*args, **kwargs)
+    return await run_in_threadpool(locked_operation)
+
+
 @app.get('/api/health')
 async def health():
     """Health check endpoint - verifies API and manager thread are running."""
@@ -113,10 +121,13 @@ async def plugs():
     all_schedules = await run_in_threadpool(get_scheduled_events)
     for p in get_plugs():
         try:
-            st = await run_in_threadpool(p.tapo.get_status)
-            tr = await run_in_threadpool(p.get_rule_remain_seconds)
-            # Fetch current energy usage (instantaneous)
-            current_power = await run_in_threadpool(p.get_current_power)
+            def get_plug_status():
+                return (
+                    p.tapo.get_status(),
+                    p.get_rule_remain_seconds(),
+                    p.get_current_power()
+                )
+            st, tr, current_power = await run_plug_operation(p, get_plug_status)
         except:
             st = None
             tr = None
@@ -139,10 +150,13 @@ async def plugs():
 
 @app.get('/api/plugs/{address}/energy')
 async def plug_energy(address: str):
-    try:
-        return await run_in_threadpool(get_plug_energy, address)
-    except StopIteration:
+    p = plug_manager.get_plug_by_address(address)
+    if not p:
         raise HTTPException(404, 'not found')
+    try:
+        return await run_plug_operation(p, p.get_hourly_energy)
+    except Exception:
+        raise HTTPException(500, 'error fetching energy data')
 
 
 @app.post('/api/plugs/{address}/toggle_enable')
@@ -184,7 +198,7 @@ async def toggle_enable(address: str):
 async def plug_on(address: str):
     p = plug_manager.get_plug_by_address(address)
     if p:
-        await run_in_threadpool(p.tapo.turnOn)
+        await run_plug_operation(p, p.tapo.turnOn)
         return {'address': address, 'turned_on': True}
     raise HTTPException(404, 'not found')
 
@@ -193,7 +207,7 @@ async def plug_on(address: str):
 async def plug_off(address: str):
     p = plug_manager.get_plug_by_address(address)
     if p:
-        await run_in_threadpool(p.tapo.turnOff)
+        await run_plug_operation(p, p.tapo.turnOff)
         return {'address': address, 'turned_off': True}
     raise HTTPException(404, 'not found')
 
@@ -208,14 +222,17 @@ async def plug_timer(address: str, request: TimerRequest):
     p = plug_manager.get_plug_by_address(address)
     if p:
         duration_seconds = request.duration_minutes * 60
-        await run_in_threadpool(p.cancel_countdown_rules)
 
-        if request.desired_state:
-            await run_in_threadpool(p.tapo.turnOff)
-            await run_in_threadpool(p.tapo.turnOnWithDelay, duration_seconds)
-        else:
-            await run_in_threadpool(p.tapo.turnOn)
-            await run_in_threadpool(p.tapo.turnOffWithDelay, duration_seconds)
+        def set_timer():
+            p.cancel_countdown_rules()
+            if request.desired_state:
+                p.tapo.turnOff()
+                p.tapo.turnOnWithDelay(duration_seconds)
+            else:
+                p.tapo.turnOn()
+                p.tapo.turnOffWithDelay(duration_seconds)
+
+        await run_plug_operation(p, set_timer)
 
         return {
             'address': address,

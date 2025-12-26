@@ -136,28 +136,30 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
             plug = plug_manager.get_plug_by_address(plug_address)
             if plug:
                 try:
-                    # Cancel all countdown timers first to avoid Tapo API errors
-                    plug.cancel_countdown_rules()
+                    # Execute all Tapo operations under lock to prevent concurrent access
+                    with plug.acquire_lock():
+                        # Cancel all countdown timers first to avoid Tapo API errors
+                        plug.cancel_countdown_rules()
 
-                    # Turn plug to desired state
-                    if desired_state:
-                        plug.tapo.turnOn()
-                        state_str = "ON"
-                    else:
-                        plug.tapo.turnOff()
-                        state_str = "OFF"
-
-                    logger.info(f"Executed scheduled event [plug_name={plug_name}, timestamp={now}, state={state_str}]")
-
-                    # If duration specified, set opposite state timer
-                    duration_seconds = event.get('duration_seconds')
-                    if duration_seconds and duration_seconds > 0:
+                        # Turn plug to desired state
                         if desired_state:
-                            plug.tapo.turnOffWithDelay(duration_seconds)
-                            logger.info(f"Plug will turn OFF [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
+                            plug.tapo.turnOn()
+                            state_str = "ON"
                         else:
-                            plug.tapo.turnOnWithDelay(duration_seconds)
-                            logger.info(f"Plug will turn ON [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
+                            plug.tapo.turnOff()
+                            state_str = "OFF"
+
+                        logger.info(f"Executed scheduled event [plug_name={plug_name}, timestamp={now}, state={state_str}]")
+
+                        # If duration specified, set opposite state timer
+                        duration_seconds = event.get('duration_seconds')
+                        if duration_seconds and duration_seconds > 0:
+                            if desired_state:
+                                plug.tapo.turnOffWithDelay(duration_seconds)
+                                logger.info(f"Plug will turn OFF [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
+                            else:
+                                plug.tapo.turnOnWithDelay(duration_seconds)
+                                logger.info(f"Plug will turn ON [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
 
                     # Send email notification
                     email_message = f"🔌 Plug {plug_name} has been turned {state_str} per scheduled event at {now}."
