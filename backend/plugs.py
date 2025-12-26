@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import configparser
 import json
+import logging
 import re
 import threading
 from datetime import datetime
 
 from PyP100 import PyP100, MeasureInterval
 
-from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config, logger
+from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config
+
+# Get centralized logger (configured in config.py)
+logger = logging.getLogger("energy_manager")
 from scheduling import (
     create_strategy,
     PeriodConfig,

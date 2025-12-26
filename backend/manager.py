@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 from datetime import datetime
@@ -9,7 +10,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, config, get_provider, logger
+from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, config, get_provider
+
+# Get centralized logger (configured in config.py)
+logger = logging.getLogger("energy_manager")
 from notifications import send_email
 from plugs import get_plugs, plug_manager
 from schedules import generate_automatic_schedules, process_scheduled_events

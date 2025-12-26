@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from config import SCHEDULED_FILE_PATH, logger
+from config import SCHEDULED_FILE_PATH
+
+# Get centralized logger (configured in config.py)
+logger = logging.getLogger("energy_manager")
 from notifications import send_email
 from plugs import Plug, plug_manager
 from scheduling import PeriodStrategyData, ValleyDetectionStrategyData

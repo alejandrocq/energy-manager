@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -7,7 +8,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from config import get_provider, logger
+from config import get_provider
+
+# Get centralized logger (configured in config.py)
+logger = logging.getLogger("energy_manager")
 from manager import run_manager_main
 from plugs import get_plugs, get_plug_energy, is_plug_enabled, plug_manager, toggle_plug_enabled
 from schedules import (

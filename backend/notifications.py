@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import smtplib
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from config import CHART_FILE_NAME, logger
+from config import CHART_FILE_NAME
+
+# Get centralized logger (configured in config.py)
+logger = logging.getLogger("energy_manager")
 
 
 def send_email(subject, content, from_email, to_email, attach_chart=False):
