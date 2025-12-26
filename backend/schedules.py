@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from config import SCHEDULED_FILE_PATH
 from notifications import send_email
 from plugs import Plug, plug_manager
+from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
 
 
 def _load_scheduled_events():
@@ -254,11 +255,10 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
             # Fallback to UTC if /etc/timezone doesn't exist
             local_tz = timezone.utc
 
-        if plug.strategy_name == 'valley_detection':
+        if isinstance(plug.strategy_data, ValleyDetectionStrategyData):
             # For valley detection, group contiguous hours into valleys and create one event per valley
-            period = plug.periods[0]
-            target_hours = period.get('target_hours', [])
-            total_runtime = period['runtime_seconds']
+            target_hours = plug.strategy_data.target_hours
+            total_runtime = plug.strategy_data.runtime_seconds
 
             if not target_hours or total_runtime <= 0:
                 continue
@@ -321,15 +321,15 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
                 events.append(event)
                 logging.info(f"Created automatic schedule [plug_name={plug.name}, strategy=valley_detection, valley={valley_hours_str}, avg_price={avg_price:.4f}, duration={timedelta(seconds=runtime_per_valley)}]")
 
-        else:
+        elif isinstance(plug.strategy_data, PeriodStrategyData):
             # For period strategy (existing behavior)
-            for period_idx, period in enumerate(plug.periods):
-                target = period.get('target')
-                if not target:
+            for period_idx, period in enumerate(plug.strategy_data.periods):
+                if period.target_hour is None:
                     continue
 
-                target_hour, target_price = target
-                runtime_seconds = period['runtime_seconds']
+                target_hour = period.target_hour
+                target_price = period.target_price
+                runtime_seconds = period.runtime_seconds
 
                 if runtime_seconds <= 0:
                     continue

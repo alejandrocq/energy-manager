@@ -14,6 +14,7 @@ from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, con
 from notifications import send_email
 from plugs import get_plugs, plug_manager
 from schedules import generate_automatic_schedules, process_scheduled_events
+from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
 
 
 def run_manager_main(stop_event=None):
@@ -88,42 +89,34 @@ def run_manager_main(stop_event=None):
                 email_message += "<p>"
                 email_message += f"🔌 {plug.name} ({plug.strategy_name}):<br>"
 
-                if plug.strategy_name == 'valley_detection':
+                if isinstance(plug.strategy_data, ValleyDetectionStrategyData):
                     # Valley detection: show all target hours
-                    period = plug.periods[0]
-                    target_hours = period.get('target_hours', [])
+                    target_hours = plug.strategy_data.target_hours
                     if target_hours:
-                        hour_prices = {h: p for h, p in hourly_prices}
-                        avg_price = sum(hour_prices.get(h, 0) for h in target_hours) / len(target_hours)
-                        rt_h = period['runtime_human']
-                        rt_s = period['runtime_seconds']
+                        avg_price = plug.strategy_data.get_average_price()
+                        rt_h = plug.strategy_data.runtime_human
+                        rt_s = plug.strategy_data.runtime_seconds
 
                         email_message += f"⬇️💶 Valley hours: {', '.join(f'{h}h' for h in target_hours)}<br>"
                         email_message += f"💶 Average price: {avg_price:.4f} €/kWh<br>"
                         email_message += f"⏱️ Total runtime: {rt_h} ({rt_s} seconds)<br>"
+                        email_message += f"📊 Profile: {plug.strategy_data.device_profile}<br>"
 
-                        # Show device profile info
-                        device_profile = plug.strategy_config.get('device_profile', 'generic')
-                        email_message += f"📊 Profile: {device_profile}<br>"
-                else:
+                elif isinstance(plug.strategy_data, PeriodStrategyData):
                     # Period strategy: show each period
-                    for period in plug.periods:
-                        if not period['target']:
+                    for period in plug.strategy_data.periods:
+                        if period.target_hour is None:
                             continue
 
-                        sh = period['start_hour']
-                        eh = period['end_hour']
-                        th, tp = period['target']
-                        rt_h = period['runtime_human']
-                        rt_s = period['runtime_seconds']
                         email_message += (
-                            f"⬇️💶 Cheapest hour within period ({sh}h - {eh}h): "
-                            f"{th}h - {tp:.4f} €/kWh<br>"
+                            f"⬇️💶 Cheapest hour within period ({period.start_hour}h - {period.end_hour}h): "
+                            f"{period.target_hour}h - {period.target_price:.4f} €/kWh<br>"
                         )
                         email_message += (
-                            f"⏱️ Plug will run for {rt_h} "
-                            f"({rt_s} seconds) in this period.<br>"
+                            f"⏱️ Plug will run for {period.runtime_human} "
+                            f"({period.runtime_seconds} seconds) in this period.<br>"
                         )
+
                 email_message += "</p>"
 
             try:

@@ -2,18 +2,75 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+
+
+@dataclass
+class PeriodConfig:
+    """Configuration for a single period in period-based strategy."""
+    start_hour: int
+    end_hour: int
+    runtime_human: str
+    runtime_seconds: int
+    runtime_hours: float
+    target_hour: int | None = None
+    target_price: float | None = None
+
+
+@dataclass
+class PeriodStrategyData:
+    """Strategy data for period-based scheduling."""
+    periods: list[PeriodConfig] = field(default_factory=list)
+
+    def get_period_by_index(self, idx: int) -> PeriodConfig | None:
+        """Get period by index, returns None if index out of range."""
+        if 0 <= idx < len(self.periods):
+            return self.periods[idx]
+        return None
+
+    def get_all_target_hours(self) -> list[int]:
+        """Get all target hours across all periods."""
+        return [p.target_hour for p in self.periods if p.target_hour is not None]
+
+
+@dataclass
+class ValleyDetectionStrategyData:
+    """Strategy data for valley detection scheduling."""
+    device_profile: str
+    runtime_human: str
+    runtime_seconds: int
+    runtime_hours: float
+    target_hours: list[int] = field(default_factory=list)
+    target_prices: dict[int, float] = field(default_factory=dict)  # hour -> price mapping
+    time_constraints: str | None = None
+    morning_window: str | None = None
+    evening_window: str | None = None
+
+    def get_average_price(self) -> float:
+        """Calculate average price of all target hours."""
+        if not self.target_hours:
+            return 0.0
+        return sum(self.target_prices.get(h, 0) for h in self.target_hours) / len(self.target_hours)
+
+    def get_all_target_hours(self) -> list[int]:
+        """Get all target hours."""
+        return self.target_hours
+
+
+# Type alias for strategy data union
+StrategyData = PeriodStrategyData | ValleyDetectionStrategyData
 
 
 class SchedulingStrategy(ABC):
     """Abstract base class for scheduling strategies."""
 
     @abstractmethod
-    def calculate_target_hours(self, prices: list[tuple[int, float]], config: dict) -> list[int]:
+    def calculate_target_hours(self, prices: list[tuple[int, float]], strategy_data: StrategyData) -> list[int]:
         """Calculate target hours to turn on the plug.
 
         Args:
             prices: List of (hour, price) tuples for the day
-            config: Strategy-specific configuration
+            strategy_data: Strategy-specific typed data
 
         Returns:
             List of hours (0-23) when plug should be turned ON
@@ -27,24 +84,23 @@ class PeriodStrategy(SchedulingStrategy):
     Finds the cheapest hour(s) within each defined period.
     """
 
-    def calculate_target_hours(self, prices: list[tuple[int, float]], config: dict) -> list[int]:
+    def calculate_target_hours(self, prices: list[tuple[int, float]], strategy_data: StrategyData) -> list[int]:
         """Calculate cheapest hours within configured periods.
 
-        Config format:
-        {
-            'periods': [
-                {'start_hour': 0, 'end_hour': 8, 'runtime_hours': 2},
-                {'start_hour': 20, 'end_hour': 23, 'runtime_hours': 2}
-            ]
-        }
+        Args:
+            prices: List of (hour, price) tuples
+            strategy_data: PeriodStrategyData with configured periods
         """
-        periods = config.get('periods', [])
+        if not isinstance(strategy_data, PeriodStrategyData):
+            logging.error(f"Invalid strategy data type for PeriodStrategy [type={type(strategy_data)}]")
+            return []
+
         target_hours = []
 
-        for period in periods:
-            start_hour = period['start_hour']
-            end_hour = period['end_hour']
-            runtime_hours = period.get('runtime_hours', 1)
+        for period in strategy_data.periods:
+            start_hour = period.start_hour
+            end_hour = period.end_hour
+            runtime_hours = int(period.runtime_hours)
 
             # Filter prices within this period
             period_prices = [(h, p) for h, p in prices if start_hour <= h <= end_hour]
@@ -91,23 +147,22 @@ class ValleyDetectionStrategy(SchedulingStrategy):
         }
     }
 
-    def calculate_target_hours(self, prices: list[tuple[int, float]], config: dict) -> list[int]:
+    def calculate_target_hours(self, prices: list[tuple[int, float]], strategy_data: StrategyData) -> list[int]:
         """Calculate target hours using valley detection.
 
-        Config format:
-        {
-            'device_profile': 'water_heater',  # or 'radiator', 'generic'
-            'runtime_hours': 4,
-            'time_constraints': '22:00-08:00',  # optional, overrides profile windows
-            'morning_window': '04:00-10:00',  # optional, for water_heater profile
-            'evening_window': '16:00-20:00'   # optional, for water_heater profile
-        }
+        Args:
+            prices: List of (hour, price) tuples
+            strategy_data: ValleyDetectionStrategyData with device profile and runtime config
         """
-        device_profile = config.get('device_profile', 'generic')
-        runtime_hours = config.get('runtime_hours', 1)
-        time_constraints = config.get('time_constraints')
-        morning_window = config.get('morning_window')
-        evening_window = config.get('evening_window')
+        if not isinstance(strategy_data, ValleyDetectionStrategyData):
+            logging.error(f"Invalid strategy data type for ValleyDetectionStrategy [type={type(strategy_data)}]")
+            return []
+
+        device_profile = strategy_data.device_profile
+        runtime_hours = strategy_data.runtime_hours
+        time_constraints = strategy_data.time_constraints
+        morning_window = strategy_data.morning_window
+        evening_window = strategy_data.evening_window
 
         profile = self.DEVICE_PROFILES.get(device_profile)
         if not profile:
