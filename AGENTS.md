@@ -198,6 +198,52 @@ If Chrome DevTools are available, you can test the application by:
 2. Opening http://localhost:5173 in Chrome
 3. Using DevTools to inspect network requests, debug JavaScript, and test API interactions
 
+## Git Commit Guidelines
+
+**Commit Message Format:**
+- Use concise, descriptive commit messages in imperative mood (e.g., "Add feature" not "Added feature")
+- First line should be a summary (50-72 characters)
+- No signatures or co-author tags unless explicitly requested
+- Keep commits focused on a single logical change
+- Add line break between summary and body if body is included
+
+**Commit Message Structure:**
+- Summary: Brief description of what changed (required)
+- Body (optional): If needed, explain why the change was made, not what changed
+- Maximum 5 bullet points if listing changes
+
+**Examples:**
+
+Good commit messages:
+```
+Standardize logging format to structured pattern: MESSAGE [param=value]
+
+Refactor backend into focused modules for better organization
+
+- Split manager logic into separate modules
+- Extract schedule management to schedules.py
+- Create plug manager singleton for shared state
+
+Add countdown timer support for manual plug control
+```
+
+Bad commit messages:
+```
+Fixed stuff
+
+Updated files
+
+- Changed app.py
+- Modified manager.py
+- Updated schedules.py
+- Fixed providers.py
+- Refactored plugs.py
+- Added new logging format
+- Removed old logs
+
+🤖 Generated with Claude Code <-- DO NOT ADD SIGNATURES
+```
+
 ## Configuration
 
 The backend requires two directories bind-mounted in the container:
