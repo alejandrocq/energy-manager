@@ -127,24 +127,31 @@ The backend is organized into focused modules with clear separation of concerns:
 ### Quick Start (Recommended)
 
 ```bash
-# Single command to start both backend and frontend
-./dev.sh
+# Start both backend and frontend
+./dev_start.sh
+
+# Stop services
+./dev_stop.sh
 ```
 
-This script:
+The `dev_start.sh` script:
 - Creates Python venv in `backend/.venv` if needed
 - Installs dependencies automatically
 - Starts unified backend (API + Manager) on port 8000
 - Starts frontend dev server on port 5173
 - Manages process lifecycle and cleanup
 - Logs to `/tmp/energy-manager-dev/*.log`
+- Writes PIDs to `/tmp/energy-manager-dev/pids` for `dev_stop.sh`
 - Returns PIDs and log paths in machine-readable format for programmatic control
+
+The `dev_stop.sh` script:
+- Reads PIDs from `/tmp/energy-manager-dev/pids`
+- Gracefully stops backend and frontend processes
+- Cleans up PID file
 
 Access:
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
-
-To stop services: `kill $BACKEND_PID $FRONTEND_PID`
 
 ### Backend Development
 
@@ -224,9 +231,9 @@ Access via http://localhost:4000 (or custom `GATEWAY_PORT`)
 
 ### Development without Docker
 
-**IMPORTANT:** Always use the `./dev.sh` script for local development. This is the standard and only supported way to run the development environment.
+**IMPORTANT:** Always use the `./dev_start.sh` script for local development. This is the standard and only supported way to run the development environment.
 
-The script handles:
+The scripts handle:
 - Virtual environment setup and dependencies
 - Starting unified backend (API + Manager) on port 8000
 - Starting frontend dev server on port 5173
@@ -239,11 +246,11 @@ Access:
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:8000
 
-To stop services: `kill $BACKEND_PID $FRONTEND_PID`
+To stop services: `./dev_stop.sh`
 
 **Testing with Chrome DevTools:**
 If Chrome DevTools are available, you can test the application by:
-1. Starting dev services with `./dev.sh`
+1. Starting dev services with `./dev_start.sh`
 2. Opening http://localhost:5173 in Chrome
 3. Using DevTools to inspect network requests, debug JavaScript, and test API interactions
 

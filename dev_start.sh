@@ -16,6 +16,7 @@ mkdir -p "$LOG_DIR"
 BACKEND_LOG="$LOG_DIR/backend.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 MAIN_LOG="$LOG_DIR/dev.log"
+PID_FILE="$LOG_DIR/pids"
 
 # Check if virtual environment exists
 if [ ! -d "$BACKEND_DIR/.venv" ]; then
@@ -90,6 +91,15 @@ echo "  Frontend: http://localhost:5173"
 echo "  Backend API: http://localhost:8000"
 echo ""
 
+# Write PIDs to file for dev_stop.sh
+cat > "$PID_FILE" <<EOF
+BACKEND_PID=$BACKEND_PID
+FRONTEND_PID=$FRONTEND_PID
+BACKEND_LOG=$BACKEND_LOG
+FRONTEND_LOG=$FRONTEND_LOG
+MAIN_LOG=$MAIN_LOG
+EOF
+
 # Output PIDs and log paths for LLM consumption (machine-readable format)
 echo "=== SERVICES STARTED ==="
 echo "BACKEND_PID=$BACKEND_PID"
@@ -97,3 +107,6 @@ echo "FRONTEND_PID=$FRONTEND_PID"
 echo "BACKEND_LOG=$BACKEND_LOG"
 echo "FRONTEND_LOG=$FRONTEND_LOG"
 echo "MAIN_LOG=$MAIN_LOG"
+echo "PID_FILE=$PID_FILE"
+echo ""
+echo -e "${YELLOW}To stop services, run: ./dev_stop.sh${NC}"
