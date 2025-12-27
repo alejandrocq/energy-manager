@@ -213,21 +213,36 @@ Dev server runs on http://localhost:5173 with `/api` proxied to backend.
 
 ### Docker Development
 
-```bash
-# Start all services (requires config and data directories)
-./run.sh Europe/Madrid /path/to/config /path/to/data 1000 4000
+**IMPORTANT:** Docker services must ONLY be started using the `run.sh` script. Never use `docker-compose up` directly.
 
-# Rebuild without cache
-docker-compose build --no-cache
+The `run.sh` script:
+- Builds all Docker images
+- Sets proper USER_ID for file permissions
+- Configures mount paths for config and data directories
+- Sets GATEWAY_PORT (optional, defaults to 4000)
+
+```bash
+# Start all services (use current user ID for proper permissions)
+./run.sh ./backend/config ./backend/data $(id -u) 4000
+
+# Stop services
+docker-compose down
 
 # View logs
 docker-compose logs -f
 
-# Stop services
-docker-compose down
+# View logs for specific service
+docker-compose logs -f backend
+docker-compose logs -f client
 ```
 
 Access via http://localhost:4000 (or custom `GATEWAY_PORT`)
+
+**Why use run.sh?**
+- Ensures proper file permissions inside containers
+- Automatically builds images when needed
+- Configures correct bind-mount paths
+- Sets environment variables consistently
 
 ### Development without Docker
 

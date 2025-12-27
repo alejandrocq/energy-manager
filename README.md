@@ -109,12 +109,26 @@ address                   = 192.168.1.12
 
 ## 🐳 Docker Deployment
 
-We provide a combined Docker image serving both API and UI on port 8000:
+The application uses a multi-container Docker setup with a gateway pattern:
 
-1. Run the startup script provided (`run.sh`) which takes your timezone, config path and host's user id. The latter is needed so the container user matches and can read the bind-mounted config directory:
+1. Run the startup script (`run.sh`) which takes config path, data path, user ID (for proper permissions), and optionally the gateway port:
    ```bash
    chmod +x run.sh
-   ./run.sh Europe/Madrid /path/to/config your_user_id
+   ./run.sh ./backend/config ./backend/data $(id -u) 4000
+   ```
+
+2. Access the app:
+   - Web UI & API via gateway: http://localhost:4000
+   - Example API endpoint: http://localhost:4000/api/plugs
+
+3. To stop services:
+   ```bash
+   docker-compose down
+   ```
+
+4. To clear Docker build cache if needed:
+   ```bash
+   docker-compose build --no-cache
    ```
 
 2. Access the app:
