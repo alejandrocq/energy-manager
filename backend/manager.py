@@ -10,7 +10,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, config, get_provider
+from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, config, get_provider, TIMEZONE
 
 # Get centralized logger (configured in config.py)
 logger = logging.getLogger("energy_manager")
@@ -68,8 +68,8 @@ def run_manager_main(stop_event=None):
             # Always reload shared plugs when either file changes
             plug_manager.reload_plugs(automatic_only=False)
 
-        if provider and (target_date is None or target_date.date() != datetime.now().date()) and not provider.unavailable():
-            target_date = datetime.now()
+        if provider and (target_date is None or target_date.date() != datetime.now(TIMEZONE).date()) and not provider.unavailable():
+            target_date = datetime.now(TIMEZONE)
             current_date = target_date.strftime("%Y%m%d")
             current_date_on_file = target_date.strftime("%Y;%m;%d")
 

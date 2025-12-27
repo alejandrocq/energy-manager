@@ -1,19 +1,17 @@
 #!/bin/bash
 
-if [ "$#" -lt 4 ] || [ "$#" -gt 5 ]; then
-  echo "Usage: $0 <TZ> <CONFIG_PATH> <DATA_PATH> <USER_ID> [GATEWAY_PORT]"
-  echo "Example: $0 Europe/Madrid ./config ./data 1000 4000"
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+  echo "Usage: $0 <CONFIG_PATH> <DATA_PATH> <USER_ID> [GATEWAY_PORT]"
+  echo "Example: $0 ./config ./data 1000 4000"
   exit 1
 fi
 
-export TZ=$1
-export CONFIG_PATH=$2
-export DATA_PATH=$3
-export USER_ID=$4
-export GATEWAY_PORT=${5:-4000}
+export CONFIG_PATH=$1
+export DATA_PATH=$2
+export USER_ID=$3
+export GATEWAY_PORT=${4:-4000}
 
 echo "Starting services with the following configuration:"
-echo "TZ: $TZ"
 echo "CONFIG_PATH: $CONFIG_PATH"
 echo "DATA_PATH: $DATA_PATH"
 echo "USER_ID: $USER_ID"

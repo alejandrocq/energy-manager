@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from config import get_provider
+from config import get_provider, TIMEZONE
 
 # Get centralized logger (configured in config.py)
 logger = logging.getLogger("energy_manager")
@@ -169,7 +169,7 @@ async def toggle_automatic(address: str):
         if automatic:
             # Plug switched to automatic mode - regenerate schedules
             try:
-                target_date = datetime.now()
+                target_date = datetime.now(TIMEZONE)
                 provider = await run_in_threadpool(get_provider)
                 prices = await run_in_threadpool(provider.get_prices, target_date)
 
@@ -246,7 +246,7 @@ async def plug_timer(address: str, request: TimerRequest):
 
 @app.get('/api/prices')
 async def get_prices():
-    data = await run_in_threadpool(get_provider().get_prices, datetime.now())
+    data = await run_in_threadpool(get_provider().get_prices, datetime.now(TIMEZONE))
     return [{'hour': h, 'value': p} for h, p in data]
 
 
@@ -291,7 +291,7 @@ async def delete_schedule(address: str, schedule_id: str):
 async def recalculate_schedules():
     """Force recalculation of automatic schedules based on current prices."""
     try:
-        target_date = datetime.now()
+        target_date = datetime.now(TIMEZONE)
         provider = await run_in_threadpool(get_provider)
         prices = await run_in_threadpool(provider.get_prices, target_date)
 

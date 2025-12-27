@@ -3,14 +3,10 @@ WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-ARG TZ=UTC
-
 RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      git tzdata \
- && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
- && echo ${TZ} > /etc/timezone \
- && rm -rf /var/lib/apt/lists/*
+  && apt-get install -y --no-install-recommends \
+      git \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

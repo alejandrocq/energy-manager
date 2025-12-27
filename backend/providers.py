@@ -1,7 +1,7 @@
 import time
 import requests
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from abc import ABC, abstractmethod
 from functools import wraps
 
@@ -51,7 +51,7 @@ class OmieProvider(PricesProvider):
         self.unavailable_until = None
 
     def unavailable(self):
-        return self.unavailable_until and datetime.now() < self.unavailable_until
+        return self.unavailable_until is not None and datetime.now(timezone.utc) < self.unavailable_until
 
     @cached_prices
     def get_prices(self, target_date: datetime) -> list[tuple[int, float]]:
@@ -102,7 +102,7 @@ class OmieProvider(PricesProvider):
                     break
                 time.sleep(self.RETRY_TIME_SECONDS)
 
-        self.unavailable_until = datetime.now() + timedelta(minutes=15)
+        self.unavailable_until = datetime.now(timezone.utc) + timedelta(minutes=15)
         logger.error(f"Failed to fetch prices after retries [max_retries={self.MAX_RETRIES}, unavailable_until={self.unavailable_until}]")
         return []
 

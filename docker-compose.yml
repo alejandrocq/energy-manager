@@ -24,7 +24,6 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       args:
-        TZ: ${TZ:-UTC}
         USER_ID: ${USER_ID:-500}
     volumes:
       - "${CONFIG_PATH:-./backend/config/}:/app/config/:rw"

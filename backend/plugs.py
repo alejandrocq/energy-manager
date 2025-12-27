@@ -9,7 +9,7 @@ from datetime import datetime
 
 from PyP100 import PyP100, MeasureInterval
 
-from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config
+from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config, TIMEZONE
 
 # Get centralized logger (configured in config.py)
 logger = logging.getLogger("energy_manager")
@@ -208,8 +208,8 @@ class Plug:
             logger.error(f"Failed to cancel countdown rules [plug_name={self.name}, error={e}]")
 
     def get_hourly_energy(self):
-        now = datetime.now()
-        day_start = datetime(now.year, now.month, now.day)
+        now = datetime.now(TIMEZONE)
+        day_start = datetime(now.year, now.month, now.day, tzinfo=TIMEZONE)
         start_ts = int(day_start.timestamp())
         end_ts = int(now.timestamp())
         resp = self.tapo.request("get_energy_data", {"start_timestamp": start_ts, "end_timestamp": end_ts, "interval": MeasureInterval.HOURS.value})
@@ -220,7 +220,7 @@ class Plug:
         out = []
         for i, val in enumerate(raw):
             ts = base_ts + i * step
-            hr = datetime.fromtimestamp(ts).hour
+            hr = datetime.fromtimestamp(ts, tz=TIMEZONE).hour
             kwh = val / 1000
             out.append({'hour': hr, 'value': kwh})
         return out

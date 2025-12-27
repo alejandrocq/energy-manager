@@ -2,6 +2,8 @@
 
 This file documents significant changes, fixes, and improvements to the Energy Manager project.
 
+**Note:** Entries are ordered from oldest to newest (top to bottom).
+
 ---
 
 ## 2025-12-25 - Unify backend to run API and Manager in single process
@@ -226,3 +228,59 @@ This file documents significant changes, fixes, and improvements to the Energy M
 - backend/app.py: Renamed endpoint and response field, added immediate state update
 - backend/schedules.py: Updated to check automatic_schedules field
 - client/src/App.tsx: Updated interface and toggle function, renamed API endpoint
+
+---
+
+## 2025-12-27 - Add timezone configuration and enforce timezone-aware datetime handling
+
+**Problem:**
+- OMIE electricity prices were being treated as system local time instead of Spanish local time
+- System timezone depended on Docker TZ build arg or system defaults
+- /etc/timezone reading failed in development (macOS), falling back to UTC
+- Mixed naive and timezone-aware datetime calls across codebase
+- Schedule times off by 1 hour in winter (CET) and 2 hours in summer (CEST)
+- Config periods (2-7, 18-22) expected Spanish local time but were interpreted as system time
+
+**Solution:**
+- Added timezone field to config.properties (default: Europe/Madrid)
+- Updated config.py to read and validate timezone from config, create ZoneInfo instance
+- Removed TZ parameter from run.sh script (no longer needed)
+- Removed TZ build arg from docker-compose.yml backend service
+- Removed tzdata installation and /etc/timezone setup from backend/Dockerfile
+- Converted all datetime.now() calls to timezone-aware:
+  - app.py: 3 calls now use datetime.now(TIMEZONE)
+  - manager.py: 2 calls now use datetime.now(TIMEZONE)
+  - providers.py: 2 calls now use datetime.now(timezone.utc)
+  - plugs.py: 3 datetime operations now use timezone-aware datetimes
+- Removed /etc/timezone reading from schedules.py, use config.TIMEZONE instead
+- OMIE hours now correctly interpreted as configured timezone (e.g., Europe/Madrid)
+- All datetimes stored as UTC, but OMIE hour interpretation uses configured timezone
+
+**Impact:**
+- Configuration: Timezone explicitly configurable in config.properties
+- Docker: Simplified deployment, no TZ environment variables needed
+- Development: Works identically in macOS dev and Docker production
+- Backend: Consistent timezone-aware datetime handling throughout codebase
+- Schedules: OMIE hour 5 (05:00 CET) now correctly creates schedule at 04:00 UTC (winter) or 03:00 UTC (summer)
+- Energy data: Hourly energy now uses configured timezone for correct attribution
+- Backoff tracking: Provider backoff uses UTC to avoid DST edge cases
+
+**Files modified:**
+- backend/config/config.properties: Added timezone field to [settings] section
+- backend/config.py: Added TIMEZONE constant with ZoneInfo validation, exported for other modules
+- run.sh: Removed TZ parameter and export, updated usage message
+- docker-compose.yml: Removed TZ build arg from backend service
+- backend/Dockerfile: Removed tzdata, /etc/localtime, and /etc/timezone setup
+- backend/app.py: 3 datetime.now() calls → datetime.now(TIMEZONE)
+- backend/manager.py: 2 datetime.now() calls → datetime.now(TIMEZONE)
+- backend/providers.py: 2 datetime.now() calls → datetime.now(timezone.utc), added timezone import
+- backend/plugs.py: 3 datetime operations → timezone-aware (get_hourly_energy, day_start, fromtimestamp)
+- backend/schedules.py: Removed /etc/timezone reading, removed ZoneInfo import, 2 tzinfo=local_tz → tzinfo=TIMEZONE
+
+**Testing:**
+- Verified schedule generation creates correct UTC times:
+  - OMIE hour 5 → 2025-12-27T04:00:00+00:00 (winter CET, correct)
+  - OMIE hour 16 → 2025-12-27T15:00:00+00:00 (winter CET, correct)
+- Previously generated schedules showed 2025-12-27T05:00:00+00:00 (1 hour off)
+- Configuration validated: Europe/Madrid timezone loaded correctly
+- Dev environment (macOS): Works without /etc/timezone, uses config timezone

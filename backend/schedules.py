@@ -4,9 +4,8 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
-from config import SCHEDULED_FILE_PATH
+from config import SCHEDULED_FILE_PATH, TIMEZONE, TIMEZONE
 
 # Get centralized logger (configured in config.py)
 logger = logging.getLogger("energy_manager")
@@ -251,15 +250,6 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
 
         plug.calculate_target_hours(prices)
 
-        # Read system timezone from /etc/timezone (set during Docker build)
-        try:
-            with open('/etc/timezone', 'r') as f:
-                system_tz = f.read().strip()
-            local_tz = ZoneInfo(system_tz)
-        except (FileNotFoundError, Exception):
-            # Fallback to UTC if /etc/timezone doesn't exist
-            local_tz = timezone.utc
-
         if isinstance(plug.strategy_data, ValleyDetectionStrategyData):
             # For valley detection, group contiguous hours into valleys and create one event per valley
             target_hours = plug.strategy_data.target_hours
@@ -301,7 +291,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
                     valley_start_hour,
                     0,  # minute
                     0,  # second
-                    tzinfo=local_tz
+                    tzinfo=TIMEZONE
                 )
                 target_dt = target_dt_local.astimezone(timezone.utc)
 
@@ -347,7 +337,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
                     target_hour,
                     0,  # minute
                     0,  # second
-                    tzinfo=local_tz
+                    tzinfo=TIMEZONE
                 )
                 # Convert to UTC for storage
                 target_dt = target_dt_local.astimezone(timezone.utc)
