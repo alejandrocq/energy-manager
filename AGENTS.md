@@ -50,10 +50,14 @@ The backend is organized into focused modules with clear separation of concerns:
   - Config hot-reload on file modification
   - Delegates responsibilities to specialized modules
 
-- `backend/config.py`: Configuration and constants (21 lines)
-  - Centralized logging setup ("energy_manager" logger)
+- `backend/config.py`: Configuration and constants
   - Configuration file parsing
+  - Timezone configuration and validation
   - Provider factory function
+
+- `backend/logging_config.py`: Logging configuration
+  - Custom uvicorn logging format configuration
+  - Unified format across all loggers (application and access logs)
 
 - `backend/plugs.py`: Plug and PlugManager classes (231 lines)
   - Plug class wraps PyP100 Tapo devices with thread-safe locking
@@ -421,7 +425,8 @@ No tests currently configured. When adding tests, set up a test framework (pytes
 **Organization:** Follow the modular architecture established in the backend:
 - `app.py`: API endpoints and manager thread lifecycle
 - `manager.py`: Orchestration loop only
-- `config.py`: Configuration and logging setup
+- `config.py`: Configuration and constants
+- `logging_config.py`: Logging configuration for uvicorn
 - `plugs.py`: Plug and PlugManager classes
 - `schedules.py`: Schedule management and execution
 - `scheduling.py`: Strategy pattern for schedule calculation
@@ -473,7 +478,7 @@ class TimerRequest(BaseModel):
 - Thread safety: Use threading.Lock for shared resource access
 - Context managers: Use `with` statements for lock acquisition
 
-**Logging:** Use centralized logger: `logger = logging.getLogger("energy_manager")`. The logger is configured in `config.py` and works seamlessly with uvicorn. Use structured format: `MESSAGE [param=value]`
+**Logging:** Use uvicorn's error logger: `logger = logging.getLogger("uvicorn.error")` at the module level. The logging format is configured globally in `logging_config.py` and passed to `uvicorn.run()`. Use structured format: `MESSAGE [param=value]`
 
 **Docstrings:** No docstrings for existing functions. Add docstrings only when creating new public functions.
 

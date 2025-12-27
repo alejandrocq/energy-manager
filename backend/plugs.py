@@ -11,8 +11,7 @@ from PyP100 import PyP100, MeasureInterval
 
 from config import CONFIG_FILE_PATH, PLUG_STATES_FILE_PATH, config, TIMEZONE
 
-# Get centralized logger (configured in config.py)
-logger = logging.getLogger("energy_manager")
+logger = logging.getLogger("uvicorn.error")
 from scheduling import (
     create_strategy,
     PeriodConfig,

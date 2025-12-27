@@ -5,10 +5,9 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from config import SCHEDULED_FILE_PATH, TIMEZONE, TIMEZONE
+from config import SCHEDULED_FILE_PATH, TIMEZONE
 
-# Get centralized logger (configured in config.py)
-logger = logging.getLogger("energy_manager")
+logger = logging.getLogger("uvicorn.error")
 from notifications import send_email
 from plugs import Plug, plug_manager
 from scheduling import PeriodStrategyData, ValleyDetectionStrategyData

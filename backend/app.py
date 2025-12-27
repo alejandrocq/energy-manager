@@ -11,8 +11,7 @@ from pydantic import BaseModel
 
 from config import get_provider, TIMEZONE
 
-# Get centralized logger (configured in config.py)
-logger = logging.getLogger("energy_manager")
+logger = logging.getLogger("uvicorn.error")
 from manager import run_manager_main
 from plugs import get_plugs, plug_manager, toggle_plug_automatic
 from schedules import (
@@ -313,13 +312,15 @@ async def recalculate_schedules():
 def run_app(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
     """Run the unified backend (API + Manager) in a single process."""
     import uvicorn
+    from logging_config import LOGGING_CONFIG
+
     uvicorn.run(
         "app:app",
         host=host,
         port=port,
         reload=reload,
         lifespan="on",
-        log_level="info"
+        log_config=LOGGING_CONFIG
     )
 
 

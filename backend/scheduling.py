@@ -4,8 +4,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-# Get centralized logger (configured in config.py)
-logger = logging.getLogger("energy_manager")
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass

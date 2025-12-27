@@ -8,8 +8,7 @@ from email.mime.text import MIMEText
 
 from config import CHART_FILE_NAME
 
-# Get centralized logger (configured in config.py)
-logger = logging.getLogger("energy_manager")
+logger = logging.getLogger("uvicorn.error")
 
 
 def send_email(subject, content, from_email, to_email, attach_chart=False):

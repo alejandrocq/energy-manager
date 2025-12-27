@@ -284,3 +284,48 @@ This file documents significant changes, fixes, and improvements to the Energy M
 - Previously generated schedules showed 2025-12-27T05:00:00+00:00 (1 hour off)
 - Configuration validated: Europe/Madrid timezone loaded correctly
 - Dev environment (macOS): Works without /etc/timezone, uses config timezone
+
+## [2025-12-27] - Integrate uvicorn logging with custom format
+
+**Problem:**
+- Application logs from manager thread and other modules were missing from output
+- Custom "energy_manager" logger had `propagate=False` which prevented logs from reaching uvicorn's handlers
+- Logger was configured before uvicorn ran, causing conflicts with uvicorn's own logger setup
+- Inconsistent log formatting between uvicorn and application logs
+- No unified timestamp format across all log messages
+
+**Solution:**
+- Migrated all modules to use `logging.getLogger("uvicorn.error")` directly
+- Created `backend/logging_config.py` with custom logging configuration
+- Defined unified log format: `LEVELNAME | YYYY-MM-DD HH:MM:SS | MESSAGE`
+- Passed custom `log_config` to `uvicorn.run()` in `app.py`
+- Removed custom logger setup from `config.py` (avoided circular import issues)
+- Updated all 9 backend modules to use uvicorn's logger consistently
+
+**Impact:**
+- All application logs now flow through uvicorn's logging infrastructure
+- No missing traces - complete visibility into manager thread operations
+- Unified log format across API, manager, and access logs
+- Cleaner, more readable logs with consistent timestamps
+- Better integration with uvicorn's log rotation and handlers
+- Documentation updated in AGENTS.md to reflect new logging approach
+
+**Files modified:**
+- backend/logging_config.py: Created with LOGGING_CONFIG dict for uvicorn
+- backend/app.py: Import and pass log_config to uvicorn.run(), use uvicorn.error logger
+- backend/config.py: Removed custom logger setup, use logging.getLogger("uvicorn.error") inline
+- backend/manager.py: Use logging.getLogger("uvicorn.error")
+- backend/schedules.py: Use logging.getLogger("uvicorn.error")
+- backend/notifications.py: Use logging.getLogger("uvicorn.error")
+- backend/plugs.py: Use logging.getLogger("uvicorn.error")
+- backend/providers.py: Use logging.getLogger("uvicorn.error")
+- backend/scheduling.py: Use logging.getLogger("uvicorn.error")
+
+**Testing:**
+- Verified all log traces appear with correct format:
+  - `INFO | 2025-12-27 03:10:41 | Starting Energy Manager backend`
+  - `INFO | 2025-12-27 03:07:44 | Created scheduled event [event_type=manual, ...]`
+  - `INFO | 2025-12-27 03:07:44 | Cancelled countdown rules [plug_name=Multipurpose]`
+  - `INFO | 2025-12-27 03:07:44 | Executed scheduled event [plug_name=Multipurpose, ...]`
+- Previously missing manager thread logs now visible
+- Log format consistent across all application and access logs

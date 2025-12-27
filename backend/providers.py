@@ -5,8 +5,7 @@ from datetime import datetime, timedelta, timezone
 from abc import ABC, abstractmethod
 from functools import wraps
 
-# Get centralized logger (configured in config.py)
-logger = logging.getLogger("energy_manager")
+logger = logging.getLogger("uvicorn.error")
 
 
 def cached_prices(func):
