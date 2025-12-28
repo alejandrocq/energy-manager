@@ -243,7 +243,7 @@ class PlugManager:
         self._plugs: list[Plug] = []
         self._lock = threading.Lock()
 
-    def reload_plugs(self, automatic_only=False):
+    def reload_plugs(self):
         """Reload plugs from config file. Thread-safe."""
         config.read(CONFIG_FILE_PATH)
         tapo_email = config.get('credentials', 'tapo_email')
@@ -256,8 +256,7 @@ class PlugManager:
                 if not address:
                     continue
                 automatic = is_plug_automatic(address)
-                if (not automatic_only) or automatic:
-                    new_plugs.append(Plug(config[section], tapo_email, tapo_password, automatic))
+                new_plugs.append(Plug(config[section], tapo_email, tapo_password, automatic))
 
         with self._lock:
             self._plugs = new_plugs

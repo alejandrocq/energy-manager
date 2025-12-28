@@ -62,10 +62,6 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Energy Manager backend")
 
-    # Initialize shared plug manager
-    logger.info("Loading plugs from config")
-    plug_manager.reload_plugs(automatic_only=False)
-
     manager_thread = ManagerThread()
     manager_thread.start()
 

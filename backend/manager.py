@@ -10,7 +10,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from config import CONFIG_FILE_PATH, CHART_FILE_NAME, PLUG_STATES_FILE_PATH, config, get_provider, TIMEZONE
+from config import CONFIG_FILE_PATH, CHART_FILE_NAME, config, get_provider, TIMEZONE
 
 logger = logging.getLogger("uvicorn.error")
 from notifications import send_email
@@ -28,7 +28,6 @@ def run_manager_main(stop_event=None):
                    If provided, checks stop_event.is_set() for shutdown.
     """
     last_config_mtime = None
-    last_states_mtime = None
     target_date = None
 
     manager_from_email = None
@@ -39,38 +38,22 @@ def run_manager_main(stop_event=None):
 
     while should_continue():
         current_config_mtime = os.path.getmtime(CONFIG_FILE_PATH)
-
-        # Check if plug_states.json exists and get its mtime
-        try:
-            current_states_mtime = os.path.getmtime(PLUG_STATES_FILE_PATH)
-        except FileNotFoundError:
-            current_states_mtime = None
-
-        # Reload if config or plug states have changed
         config_changed = current_config_mtime != last_config_mtime
-        states_changed = current_states_mtime != last_states_mtime
 
-        if config_changed or states_changed:
-            if config_changed:
-                logger.info(f"Config file changed, recalculating prices [path={CONFIG_FILE_PATH}]")
-                last_config_mtime = current_config_mtime
-                config.read(CONFIG_FILE_PATH)
-                manager_from_email = config.get('email', 'from_email')
-                manager_to_email = config.get('email', 'to_email')
-                provider = get_provider()
-                target_date = None  # Force reloading prices
+        if config_changed:
+            logger.info(f"Config file changed, recalculating prices [path={CONFIG_FILE_PATH}]")
+            last_config_mtime = current_config_mtime
+            config.read(CONFIG_FILE_PATH)
+            manager_from_email = config.get('email', 'from_email')
+            manager_to_email = config.get('email', 'to_email')
+            provider = get_provider()
+            target_date = None  # Force reloading prices
 
-            if states_changed:
-                logger.info(f"Plug states file changed, reloading plugs [path={PLUG_STATES_FILE_PATH}]")
-                last_states_mtime = current_states_mtime
-
-            # Always reload shared plugs when either file changes
-            plug_manager.reload_plugs(automatic_only=False)
+            # Reload shared plugs when config changes
+            plug_manager.reload_plugs()
 
         if provider and (target_date is None or target_date.date() != datetime.now(TIMEZONE).date()) and not provider.unavailable():
             target_date = datetime.now(TIMEZONE)
-            current_date = target_date.strftime("%Y%m%d")
-            current_date_on_file = target_date.strftime("%Y;%m;%d")
 
             logger.info(f"Loading prices data [date={target_date.date()}]")
 
