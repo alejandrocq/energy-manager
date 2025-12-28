@@ -119,12 +119,13 @@ async def plugs():
         try:
             def get_plug_status():
                 return (
-                    p.tapo.get_status(),
+                    p.get_status(),
                     p.get_rule_remain_seconds(),
                     p.get_current_power()
                 )
             st, tr, current_power = await run_plug_operation(p, get_plug_status)
-        except:
+        except Exception as e:
+            logger.error(f"Failed to get plug status [plug_name={p.name}, address={p.address}, error={type(e).__name__}: {e}]")
             st = None
             tr = None
             current_power = None
@@ -193,7 +194,7 @@ async def toggle_automatic(address: str):
 async def plug_on(address: str):
     p = plug_manager.get_plug_by_address(address)
     if p:
-        await run_plug_operation(p, p.tapo.turnOn)
+        await run_plug_operation(p, p.turn_on)
         return {'address': address, 'turned_on': True}
     raise HTTPException(404, 'not found')
 
@@ -202,7 +203,7 @@ async def plug_on(address: str):
 async def plug_off(address: str):
     p = plug_manager.get_plug_by_address(address)
     if p:
-        await run_plug_operation(p, p.tapo.turnOff)
+        await run_plug_operation(p, p.turn_off)
         return {'address': address, 'turned_off': True}
     raise HTTPException(404, 'not found')
 
@@ -221,11 +222,11 @@ async def plug_timer(address: str, request: TimerRequest):
         def set_timer():
             p.cancel_countdown_rules()
             if request.desired_state:
-                p.tapo.turnOff()
-                p.tapo.turnOnWithDelay(duration_seconds)
+                p.turn_off()
+                p.turn_on_with_delay(duration_seconds)
             else:
-                p.tapo.turnOn()
-                p.tapo.turnOffWithDelay(duration_seconds)
+                p.turn_on()
+                p.turn_off_with_delay(duration_seconds)
 
         await run_plug_operation(p, set_timer)
 

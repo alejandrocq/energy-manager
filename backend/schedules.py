@@ -141,10 +141,10 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
 
                         # Turn plug to desired state
                         if desired_state:
-                            plug.tapo.turnOn()
+                            plug.turn_on()
                             state_str = "ON"
                         else:
-                            plug.tapo.turnOff()
+                            plug.turn_off()
                             state_str = "OFF"
 
                         logger.info(f"Executed scheduled event [plug_name={plug_name}, timestamp={now}, state={state_str}]")
@@ -153,10 +153,10 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
                         duration_seconds = event.get('duration_seconds')
                         if duration_seconds and duration_seconds > 0:
                             if desired_state:
-                                plug.tapo.turnOffWithDelay(duration_seconds)
+                                plug.turn_off_with_delay(duration_seconds)
                                 logger.info(f"Plug will turn OFF [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
                             else:
-                                plug.tapo.turnOnWithDelay(duration_seconds)
+                                plug.turn_on_with_delay(duration_seconds)
                                 logger.info(f"Plug will turn ON [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
 
                     # Send email notification

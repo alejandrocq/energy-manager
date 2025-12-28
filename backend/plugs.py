@@ -38,8 +38,11 @@ class Plug:
         self.name = plug_config.get('name')
         self.address = plug_config.get('address')
         self.automatic_schedules = automatic_schedules
+        self._email = email
+        self._password = password
         self.tapo = PyP100.Switchable(self.address, email, password)
         self._lock = threading.Lock()
+        self._session_initialized = False
 
         # Load scheduling strategy (default to 'period' for backward compatibility)
         strategy_name = plug_config.get('strategy', 'period')
@@ -56,6 +59,37 @@ class Plug:
     def acquire_lock(self):
         """Context manager for thread-safe plug operations."""
         return self._lock
+
+    def _initialize_session(self):
+        """Initialize Tapo session with handshake and login. Should be called under lock."""
+        try:
+            self.tapo.handshake()
+            self.tapo.login()
+            self._session_initialized = True
+            logger.info(f"Tapo session initialized [plug_name={self.name}, address={self.address}]")
+        except Exception as e:
+            self._session_initialized = False
+            logger.error(f"Failed to initialize Tapo session [plug_name={self.name}, address={self.address}, error={type(e).__name__}: {e}]")
+            raise
+
+    def _ensure_session(self):
+        """Ensure session is initialized. Should be called under lock."""
+        if not self._session_initialized:
+            logger.info(f"Session not initialized, initializing now [plug_name={self.name}]")
+            self._initialize_session()
+
+    def _execute_operation(self, operation, *args, **kwargs):
+        """Execute a Tapo operation with session management. Should be called under lock."""
+        self._ensure_session()
+        try:
+            return operation(*args, **kwargs)
+        except Exception as e:
+            error_msg = str(e).lower()
+            # Check if error is session-related
+            if any(keyword in error_msg for keyword in ['session', 'auth', 'login', 'handshake', 'token', 'invalid']):
+                logger.warning(f"Session error detected, will reinitialize on next operation [plug_name={self.name}, error={type(e).__name__}: {e}]")
+                self._session_initialized = False
+            raise
 
     def _parse_period_config(self, plug_config: configparser.SectionProxy):
         """Parse period-based strategy configuration."""
@@ -172,9 +206,10 @@ class Plug:
                     period.target_price = None
 
     def get_rule_remain_seconds(self):
+        """Get remaining seconds on active countdown rule. Must be called under lock."""
         result = None
         try:
-            rules = self.tapo.getCountDownRules()['rule_list']
+            rules = self._execute_operation(self.tapo.getCountDownRules)['rule_list']
             if rules:
                 rule = next((r for r in rules if r.get("enable")), rules[0])
                 enabled = rule.get("enable")
@@ -182,12 +217,13 @@ class Plug:
                 if enabled and isinstance(rem, (int, float)) and rem > 0:
                     result = int(rem)
         except Exception as e:
-            logger.error(f"Failed to get countdown rules [error={e}]")
+            logger.error(f"Failed to get countdown rules [plug_name={self.name}, error={type(e).__name__}: {e}]")
         return result
 
     def cancel_countdown_rules(self):
+        """Cancel all active countdown rules. Must be called under lock."""
         try:
-            rules_response = self.tapo.getCountDownRules()
+            rules_response = self._execute_operation(self.tapo.getCountDownRules)
             rules = rules_response.get('rule_list', [])
 
             # Disable all active rules by setting their 'enable' to 0
@@ -196,22 +232,31 @@ class Plug:
                     rule_id = rule.get('id')
                     if rule_id:
                         # Edit the rule to disable it
-                        self.tapo.request('edit_countdown_rule', {
-                            'id': rule_id,
-                            'enable': False,
-                            'delay': rule.get('delay', 0),
-                            'desired_states': rule.get('desired_states', {'on': False})
-                        })
+                        self._execute_operation(
+                            self.tapo.request,
+                            'edit_countdown_rule',
+                            {
+                                'id': rule_id,
+                                'enable': False,
+                                'delay': rule.get('delay', 0),
+                                'desired_states': rule.get('desired_states', {'on': False})
+                            }
+                        )
             logger.info(f"Cancelled countdown rules [plug_name={self.name}]")
         except Exception as e:
-            logger.error(f"Failed to cancel countdown rules [plug_name={self.name}, error={e}]")
+            logger.error(f"Failed to cancel countdown rules [plug_name={self.name}, error={type(e).__name__}: {e}]")
 
     def get_hourly_energy(self):
+        """Get hourly energy consumption for today. Must be called under lock."""
         now = datetime.now(TIMEZONE)
         day_start = datetime(now.year, now.month, now.day, tzinfo=TIMEZONE)
         start_ts = int(day_start.timestamp())
         end_ts = int(now.timestamp())
-        resp = self.tapo.request("get_energy_data", {"start_timestamp": start_ts, "end_timestamp": end_ts, "interval": MeasureInterval.HOURS.value})
+        resp = self._execute_operation(
+            self.tapo.request,
+            "get_energy_data",
+            {"start_timestamp": start_ts, "end_timestamp": end_ts, "interval": MeasureInterval.HOURS.value}
+        )
         raw = resp.get('data', [])
         base_ts = resp.get('start_timestamp', start_ts)
         interval_min = resp.get('interval', 60)
@@ -225,15 +270,40 @@ class Plug:
         return out
 
     def get_current_power(self):
+        """Get current power consumption in kW. Must be called under lock."""
         try:
-            status = self.tapo.request('get_energy_usage')
+            status = self._execute_operation(self.tapo.request, 'get_energy_usage')
             if 'current_power' in status:
                 return round(status['current_power'] / 1000, 2)
             else:
                 return None
         except Exception as e:
-            logger.error(f"Failed to get current power [error={e}]")
+            logger.error(f"Failed to get current power [plug_name={self.name}, error={type(e).__name__}: {e}]")
             return None
+
+    def get_status(self):
+        """Get plug on/off status. Must be called under lock."""
+        return self._execute_operation(self.tapo.get_status)
+
+    def turn_on(self):
+        """Turn plug on. Must be called under lock."""
+        self._execute_operation(self.tapo.turnOn)
+        logger.info(f"Turned plug ON [plug_name={self.name}]")
+
+    def turn_off(self):
+        """Turn plug off. Must be called under lock."""
+        self._execute_operation(self.tapo.turnOff)
+        logger.info(f"Turned plug OFF [plug_name={self.name}]")
+
+    def turn_on_with_delay(self, delay_seconds: int):
+        """Turn plug on after delay. Must be called under lock."""
+        self._execute_operation(self.tapo.turnOnWithDelay, delay_seconds)
+        logger.info(f"Set plug to turn ON after delay [plug_name={self.name}, delay={delay_seconds}s]")
+
+    def turn_off_with_delay(self, delay_seconds: int):
+        """Turn plug off after delay. Must be called under lock."""
+        self._execute_operation(self.tapo.turnOffWithDelay, delay_seconds)
+        logger.info(f"Set plug to turn OFF after delay [plug_name={self.name}, delay={delay_seconds}s]")
 
 
 class PlugManager:
