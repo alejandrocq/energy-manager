@@ -144,6 +144,32 @@ with open('/tmp/email_schedule_manual_off.html', 'w') as f:
     f.write(html)
 print("✓ Generated: /tmp/email_schedule_manual_off.html")
 
+# 8. Repeating schedule - OFF to ON with duration
+with open('/tmp/email_schedule_repeating_on.html', 'w') as f:
+    html = render_schedule_execution_email(
+        plug_name='Coffee Machine',
+        event_type='repeating',
+        from_state=False,
+        to_state=True,
+        timestamp='Dec 29, 07:00',
+        duration_info='Will turn OFF in 15m'
+    )
+    f.write(html)
+print("✓ Generated: /tmp/email_schedule_repeating_on.html")
+
+# 9. Repeating schedule - ON to OFF
+with open('/tmp/email_schedule_repeating_off.html', 'w') as f:
+    html = render_schedule_execution_email(
+        plug_name='Living Room Lamp',
+        event_type='repeating',
+        from_state=True,
+        to_state=False,
+        timestamp='Dec 29, 23:30',
+        duration_info=''
+    )
+    f.write(html)
+print("✓ Generated: /tmp/email_schedule_repeating_off.html")
+
 print("\n✅ All email samples generated successfully!")
 print("\nFiles created:")
 print("  - /tmp/email_daily_period.html")
@@ -153,3 +179,5 @@ print("  - /tmp/email_schedule_auto_on.html")
 print("  - /tmp/email_schedule_auto_off.html")
 print("  - /tmp/email_schedule_manual_on.html")
 print("  - /tmp/email_schedule_manual_off.html")
+print("  - /tmp/email_schedule_repeating_on.html")
+print("  - /tmp/email_schedule_repeating_off.html")

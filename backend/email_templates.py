@@ -50,18 +50,36 @@ def render_badge(text: str, bg_color: str, text_color: str) -> str:
                  color: {text_color}; background-color: {bg_color}; border-radius: 4px; flex-shrink: 0;">{text}</span>'''
 
 
-def render_state_badge(state: bool) -> str:
+def render_state_badge(state: bool, large: bool = False) -> str:
     """Render ON/OFF state badge with appropriate colors."""
-    if state:
-        return render_badge("ON", "#d1fae5", "#065f46")  # green-100, green-900
+    if large:
+        # Large badges for state transitions
+        padding = "12px 28px"
+        font_size = "15px"
+        border_radius = "8px"
     else:
-        return render_badge("OFF", "#fee2e2", "#991b1b")  # red-100, red-900
+        # Small badges for inline use
+        padding = "2px 8px"
+        font_size = "11px"
+        border_radius = "4px"
+
+    if state:
+        bg_color, text_color = "#d1fae5", "#065f46"  # green-100, green-900
+        text = "ON"
+    else:
+        bg_color, text_color = "#fee2e2", "#991b1b"  # red-100, red-900
+        text = "OFF"
+
+    return f'''<span style="display: inline-flex; align-items: center; padding: {padding}; font-size: {font_size}; font-weight: 700;
+                 color: {text_color}; background-color: {bg_color}; border-radius: {border_radius}; flex-shrink: 0;">{text}</span>'''
 
 
 def render_type_badge(event_type: str) -> str:
-    """Render Auto/Manual badge."""
+    """Render Auto/Manual/Repeating badge."""
     if event_type == "automatic":
         return render_badge("Auto", "#dbeafe", "#1e40af")  # blue-100, blue-800
+    elif event_type == "repeating":
+        return render_badge("Repeating", "#ccfbf1", "#0f766e")  # teal-100, teal-700
     else:
         return render_badge("Manual", "#e9d5ff", "#6b21a8")  # purple-100, purple-800
 
@@ -97,13 +115,13 @@ def render_card(content: str, title: str = "") -> str:
 
 def render_state_transition(from_state: bool, to_state: bool) -> str:
     """Render state transition with arrow."""
-    from_badge = render_state_badge(from_state)
-    to_badge = render_state_badge(to_state)
+    from_badge = render_state_badge(from_state, large=True)
+    to_badge = render_state_badge(to_state, large=True)
 
     return f'''
-    <div style="display: flex; align-items: center; justify-content: center; font-size: 20px; margin: 32px 0; gap: 16px;">
+    <div style="display: flex; align-items: center; justify-content: center; font-size: 20px; margin: 32px 0; gap: 5px;">
         {from_badge}
-        {icon_arrow_right()}
+        {icon_arrow_right(48, "#6366f1")}
         {to_badge}
     </div>
     '''
