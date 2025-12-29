@@ -61,16 +61,10 @@ class Plug:
         return self._lock
 
     def _initialize_session(self):
-        """Initialize Tapo session with handshake and login. Should be called under lock."""
-        try:
-            self.tapo.handshake()
-            self.tapo.login()
-            self._session_initialized = True
-            logger.info(f"Tapo session initialized [plug_name={self.name}, address={self.address}]")
-        except Exception as e:
-            self._session_initialized = False
-            logger.error(f"Failed to initialize Tapo session [plug_name={self.name}, address={self.address}, error={type(e).__name__}: {e}]")
-            raise
+        """Create fresh Tapo client. Should be called under lock."""
+        self.tapo = PyP100.Switchable(self.address, self._email, self._password)
+        self._session_initialized = True
+        logger.info(f"Tapo client initialized [plug_name={self.name}, address={self.address}]")
 
     def _ensure_session(self):
         """Ensure session is initialized. Should be called under lock."""
@@ -84,13 +78,13 @@ class Plug:
         try:
             return operation(*args, **kwargs)
         except Exception as e:
-            # Try to re-initialize session and retry operation. If it fails again, we give up.
-            logger.warning(f"Operation failed, re-initializing session and retrying [plug_name={self.name}, error={type(e).__name__}: {e}]")
+            # Re-initialize session with fresh client and retry operation
+            logger.warning(f"Operation failed, recreating client and retrying [plug_name={self.name}, error={type(e).__name__}: {e}]")
             self._initialize_session()
             try:
                 return operation(*args, **kwargs)
             except Exception as e2:
-                logger.error(f"Operation failed after session re-initialization [plug_name={self.name}, error={type(e2).__name__}: {e2}]")
+                logger.error(f"Operation failed after client recreation [plug_name={self.name}, error={type(e2).__name__}: {e2}]")
             raise
 
     def _parse_period_config(self, plug_config: configparser.SectionProxy):

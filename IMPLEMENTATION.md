@@ -381,3 +381,21 @@ This file documents significant changes, fixes, and improvements to the Energy M
 - Schedules: More resilient to transient failures
 - Backward compatible: existing events without retry fields work normally
 - Logging: Clear visibility into retry attempts and permanent failures
+
+---
+
+## [2025-12-29] - Fix 403 Forbidden errors by always recreating Tapo client
+
+**Problem:**
+- After session re-initialization, operations still failed with 403 Forbidden
+- PyP100 client retained stale session state (cookies, tokens, sequence numbers)
+- Simple handshake/login on existing client didn't clear corrupted state
+
+**Solution:**
+- Changed `_initialize_session()` to always create fresh `PyP100.Switchable` instance
+- Removed explicit handshake/login calls (handled internally by library)
+- Fresh client ensures clean session state with no stale data
+
+**Impact:**
+- Backend: 403 errors now properly recovered by full client recreation
+- Simpler code with single initialization path
