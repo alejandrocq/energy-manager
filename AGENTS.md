@@ -562,7 +562,7 @@ import {Modal} from "./Modal";
 
 ## Change Documentation
 
-**CRITICAL:** All important changes, fixes, and improvements MUST be documented in `IMPLEMENTATION.md`.
+**CRITICAL:** All important changes, fixes, and improvements MUST be documented in `HISTORY.md`.
 
 **What to document:**
 - Bug fixes (describe the issue and solution)
@@ -573,7 +573,7 @@ import {Modal} from "./Modal";
 - Security improvements
 - Dependency updates that affect behavior
 
-**Documentation format in IMPLEMENTATION.md:**
+**Documentation format in HISTORY.md:**
 ```markdown
 ## [Date] - Brief title
 
@@ -595,7 +595,7 @@ import {Modal} from "./Modal";
 - Internal refactoring with no external impact
 - Documentation updates themselves
 
-Keep `IMPLEMENTATION.md` as a chronological log of significant changes for easier project maintenance and onboarding.
+Keep `HISTORY.md` as a chronological log of significant changes for easier project maintenance and onboarding.
 
 ## Important Notes
 
