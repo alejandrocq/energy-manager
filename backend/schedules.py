@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from config import SCHEDULED_FILE_PATH, TIMEZONE
 
 logger = logging.getLogger("uvicorn.error")
+from email_templates import render_schedule_execution_email
 from notifications import send_email
 from plugs import Plug, plug_manager
 from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
@@ -160,15 +161,44 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
                                 logger.info(f"Plug will turn ON [plug_name={plug_name}, duration={timedelta(seconds=duration_seconds)}]")
 
                     # Send email notification
-                    email_message = f"🔌 Plug {plug_name} has been turned {state_str} per scheduled event at {now}."
+                    from_state = not desired_state  # Previous state is opposite of desired
+                    event_type = event.get('type', 'manual')
+
+                    # Format timestamp
+                    timestamp_local = now.astimezone(TIMEZONE)
+                    timestamp_str = timestamp_local.strftime("%b %d, %H:%M")
+
+                    # Build duration info if applicable
+                    duration_info = ""
                     if duration_seconds and duration_seconds > 0:
                         opposite_state = "OFF" if desired_state else "ON"
-                        email_message += f"<br>It will turn {opposite_state} in {timedelta(seconds=duration_seconds)}."
+                        duration_td = timedelta(seconds=duration_seconds)
+                        # Format duration nicely
+                        hours = duration_td.seconds // 3600
+                        minutes = (duration_td.seconds % 3600) // 60
+                        if hours > 0 and minutes > 0:
+                            duration_str = f"{hours}h {minutes}m"
+                        elif hours > 0:
+                            duration_str = f"{hours}h"
+                        else:
+                            duration_str = f"{minutes}m"
+                        duration_info = f"Will turn {opposite_state} in {duration_str}"
+
+                    email_html = render_schedule_execution_email(
+                        plug_name=plug_name,
+                        event_type=event_type,
+                        from_state=from_state,
+                        to_state=desired_state,
+                        timestamp=timestamp_str,
+                        duration_info=duration_info
+                    )
+
                     send_email(
                         f"🔌 Plug {plug_name} scheduled {state_str} executed",
-                        email_message,
+                        email_html,
                         manager_from_email,
-                        manager_to_email
+                        manager_to_email,
+                        attach_chart=False
                     )
 
                     event['status'] = 'completed'

@@ -5,14 +5,10 @@ import os
 import time
 from datetime import datetime
 
-# Set matplotlib backend to non-GUI before importing pyplot
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
-from config import CONFIG_FILE_PATH, CHART_FILE_NAME, config, get_provider, TIMEZONE
+from config import CONFIG_FILE_PATH, config, get_provider, TIMEZONE
 
 logger = logging.getLogger("uvicorn.error")
+from email_templates import render_daily_summary_email
 from notifications import send_email
 from plugs import get_plugs, plug_manager
 from schedules import generate_automatic_schedules, process_scheduled_events
@@ -62,66 +58,60 @@ def run_manager_main(stop_event=None):
                 logger.warning(f"No prices data available, skipping email [date={target_date.date()}]")
                 continue
 
-            email_message = f"<p>💶🔋 Electricity prices for {target_date.date()}:</p>"
-            for hour, price in hourly_prices:
-                email_message += f"⏱️💶 {hour}h: {price} €/kWh<br>"
-
             # Get shared plugs for daily email and schedule generation
             plugs = get_plugs(automatic_only=False)
+
+            # Build plug info for email template
+            plugs_info = []
             for plug in plugs:
                 plug.calculate_target_hours(hourly_prices)
 
-                email_message += "<p>"
-                email_message += f"🔌 {plug.name} ({plug.strategy_name}):<br>"
+                plug_data = {
+                    'name': plug.name,
+                    'strategy_name': plug.strategy_name,
+                    'strategy_type': '',
+                    'periods': [],
+                    'valley_info': {}
+                }
 
                 if isinstance(plug.strategy_data, ValleyDetectionStrategyData):
-                    # Valley detection: show all target hours
+                    plug_data['strategy_type'] = 'valley'
                     target_hours = plug.strategy_data.target_hours
                     if target_hours:
-                        avg_price = plug.strategy_data.get_average_price()
-                        rt_h = plug.strategy_data.runtime_human
-                        rt_s = plug.strategy_data.runtime_seconds
-
-                        email_message += f"⬇️💶 Valley hours: {', '.join(f'{h}h' for h in target_hours)}<br>"
-                        email_message += f"💶 Average price: {avg_price:.4f} €/kWh<br>"
-                        email_message += f"⏱️ Total runtime: {rt_h} ({rt_s} seconds)<br>"
-                        email_message += f"📊 Profile: {plug.strategy_data.device_profile}<br>"
+                        plug_data['valley_info'] = {
+                            'target_hours': target_hours,
+                            'avg_price': plug.strategy_data.get_average_price(),
+                            'runtime_human': plug.strategy_data.runtime_human,
+                            'runtime_seconds': plug.strategy_data.runtime_seconds,
+                            'device_profile': plug.strategy_data.device_profile
+                        }
 
                 elif isinstance(plug.strategy_data, PeriodStrategyData):
-                    # Period strategy: show each period
-                    for period in plug.strategy_data.periods:
-                        if period.target_hour is None:
-                            continue
+                    plug_data['strategy_type'] = 'period'
+                    for idx, period in enumerate(plug.strategy_data.periods):
+                        if period.target_hour is not None:
+                            plug_data['periods'].append({
+                                'period_name': f"Period {idx + 1} ({period.start_hour}h - {period.end_hour}h)",
+                                'target_hour': period.target_hour,
+                                'target_price': period.target_price,
+                                'runtime_human': period.runtime_human
+                            })
 
-                        email_message += (
-                            f"⬇️💶 Cheapest hour within period ({period.start_hour}h - {period.end_hour}h): "
-                            f"{period.target_hour}h - {period.target_price:.4f} €/kWh<br>"
-                        )
-                        email_message += (
-                            f"⏱️ Plug will run for {period.runtime_human} "
-                            f"({period.runtime_seconds} seconds) in this period.<br>"
-                        )
+                plugs_info.append(plug_data)
 
-                email_message += "</p>"
-
-            try:
-                os.remove(CHART_FILE_NAME)
-            except OSError:
-                pass
-
-            fig, ax = plt.subplots()
-            ax.bar([h for h, p in hourly_prices], [p for h, p in hourly_prices])
-            ax.set_title(f"Electricity prices for {target_date.date()}")
-            ax.set_xlabel("Hour")
-            ax.set_ylabel("Price (€/kWh)")
-            fig.savefig(CHART_FILE_NAME)
+            # Render email using new template
+            email_html = render_daily_summary_email(
+                str(target_date.date()),
+                hourly_prices,
+                plugs_info
+            )
 
             send_email(
                 f'💶🔋 Electricity prices for {target_date.date()}',
-                email_message,
+                email_html,
                 manager_from_email,
                 manager_to_email,
-                True
+                attach_chart=False
             )
             logger.info(f"Downloaded prices data and sent email [date={target_date.date()}]")
 

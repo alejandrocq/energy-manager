@@ -7,7 +7,6 @@ from providers import PROVIDERS
 
 # File paths
 CONFIG_FILE_PATH = "config/config.properties"
-CHART_FILE_NAME = "prices_chart.png"
 SCHEDULED_FILE_PATH = "data/schedules.json"
 PLUG_STATES_FILE_PATH = "data/plug_states.json"
 

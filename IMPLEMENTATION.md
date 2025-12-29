@@ -329,3 +329,35 @@ This file documents significant changes, fixes, and improvements to the Energy M
   - `INFO | 2025-12-27 03:07:44 | Executed scheduled event [plug_name=Multipurpose, ...]`
 - Previously missing manager thread logs now visible
 - Log format consistent across all application and access logs
+
+---
+
+## [2025-12-29] - Redesign email notifications with modern HTML templates
+
+**Problem:**
+- Email notifications used plain HTML with Unicode emojis
+- Daily price summary attached matplotlib chart as PNG file
+- Emails didn't match the UI design and had minimal styling
+- Chart generation required matplotlib dependency (~20MB)
+
+**Solution:**
+- Create email_templates.py module with SVG icons and HTML rendering functions
+- Replace matplotlib PNG chart generation with inline HTML/CSS bar charts
+- Update all email notifications to use new template system (manager, schedules)
+- Remove matplotlib and 6 related dependencies from requirements.txt (~20MB)
+- Use flexbox layout throughout for consistent spacing via gap property
+
+**Impact:**
+- Emails: Modern appearance matching UI design with card layout and color-coded charts
+- Daily summary: Inline HTML/CSS chart with price color coding and target hours highlighted
+- Schedule notifications: Visual state transitions with arrows and colored badges (Auto/Manual, ON/OFF)
+- Dependencies: Reduced backend size by ~20MB
+- Layout: Flexbox-based layout with gap for spacing (no tables, no margin hacks)
+
+**Files modified:**
+- backend/email_templates.py: Created with SVG icons, flex layouts, and template rendering
+- backend/manager.py: Replaced matplotlib chart and email generation with template system
+- backend/schedules.py: Updated schedule execution email to use new template
+- backend/notifications.py: Simplified send_email function, removed chart attachment logic
+- backend/config.py: Removed CHART_FILE_NAME constant
+- backend/requirements.txt: Removed matplotlib, contourpy, cycler, fonttools, kiwisolver, numpy, pillow, pyparsing
