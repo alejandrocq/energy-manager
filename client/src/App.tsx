@@ -3,7 +3,7 @@ import './App.css'
 import {CategoryScale, Chart as ChartJS, Legend, LinearScale, BarElement, Title, Tooltip as ChartTooltip} from 'chart.js'
 import {Bar} from 'react-chartjs-2'
 import {SlClose} from "react-icons/sl";
-import {FaCalendar, FaClock, FaPlug} from "react-icons/fa6";
+import {FaCalendar, FaClock, FaPlug, FaRepeat} from "react-icons/fa6";
 import {ImPower} from "react-icons/im";
 import {MdEnergySavingsLeaf, MdPowerSettingsNew, MdAutoMode} from "react-icons/md";
 import {FaRegChartBar} from "react-icons/fa";
@@ -12,6 +12,7 @@ import {Modal} from "./Modal";
 import {TimerSelector} from "./TimerSelector.tsx";
 import {ScheduleSelector} from "./ScheduleSelector.tsx";
 import {Tooltip} from "./Tooltip";
+import {RecurrenceConfig, formatRecurrencePattern} from "./recurrenceUtils";
 
 ChartJS.register(
     CategoryScale,
@@ -38,9 +39,10 @@ interface ScheduledEvent {
     target_datetime: string
     desired_state: boolean
     duration_seconds: number | null
-    type?: string  // "automatic" or "manual"
+    type?: string  // "automatic", "manual", or "repeating"
     status: string
     created_at: string
+    recurrence?: RecurrenceConfig & { parent_id: string }
 }
 
 interface Plug {
@@ -264,28 +266,48 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }, [plugs, showToast, fetchPlugs, fetchEnergy, open])
 
-    const createSchedule = useCallback(async (address: string, targetDatetime: string, desiredState: boolean, durationMinutes?: number) => {
+    const createSchedule = useCallback(async (address: string, targetDatetime: string, desiredState: boolean, durationMinutes?: number, recurrence?: RecurrenceConfig) => {
         const plug = plugs.find(p => p.address === address)
         const operationKey = `schedule-${address}`
 
         setPendingOperations(prev => ({...prev, [operationKey]: true}))
         setScheduleModalPlug(null)
 
+        const requestBody: {
+            target_datetime?: string;
+            desired_state: boolean;
+            duration_minutes?: number;
+            recurrence?: RecurrenceConfig;
+        } = {
+            desired_state: desiredState,
+            duration_minutes: durationMinutes
+        };
+
+        if (recurrence) {
+            requestBody.recurrence = recurrence;
+        } else {
+            requestBody.target_datetime = targetDatetime;
+        }
+
         const response = await fetch(`${API}/plugs/${address}/schedule`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                target_datetime: targetDatetime,
-                desired_state: desiredState,
-                duration_minutes: durationMinutes
-            })
+            body: JSON.stringify(requestBody)
         })
 
         if (response.ok) {
             await response.json()
-            const timeStr = fmtDatetime(targetDatetime)
             const stateStr = desiredState ? 'ON' : 'OFF'
-            let message = `${plug?.name}: Scheduled to turn ${stateStr} at ${timeStr}`
+            let message: string
+
+            if (recurrence) {
+                const patternStr = formatRecurrencePattern(recurrence)
+                message = `${plug?.name}: Created repeating schedule (${patternStr})`
+            } else {
+                const timeStr = fmtDatetime(targetDatetime)
+                message = `${plug?.name}: Scheduled to turn ${stateStr} at ${timeStr}`
+            }
+
             if (durationMinutes && durationMinutes > 0) {
                 const h = Math.floor(durationMinutes / 60)
                 const m = durationMinutes % 60
@@ -304,18 +326,31 @@ const App: React.FC = () => {
         setPendingOperations(prev => ({...prev, [operationKey]: false}))
     }, [plugs, showToast, fetchPlugs])
 
-    const deleteSchedule = useCallback(async (address: string, scheduleId: string) => {
+    const deleteSchedule = useCallback(async (address: string, scheduleId: string, parentId?: string) => {
         const plug = plugs.find(p => p.address === address)
         const operationKey = `delete-schedule-${scheduleId}`
 
         setPendingOperations(prev => ({...prev, [operationKey]: true}))
 
-        const response = await fetch(`${API}/plugs/${address}/schedules/${scheduleId}`, {
-            method: 'DELETE'
-        })
+        let response: Response
+        let successMessage: string
+
+        if (parentId) {
+            // Delete entire repeating schedule series
+            response = await fetch(`${API}/plugs/${address}/repeating-schedules/${parentId}`, {
+                method: 'DELETE'
+            })
+            successMessage = `${plug?.name}: Repeating schedule cancelled`
+        } else {
+            // Delete single schedule
+            response = await fetch(`${API}/plugs/${address}/schedules/${scheduleId}`, {
+                method: 'DELETE'
+            })
+            successMessage = `${plug?.name}: Schedule cancelled`
+        }
 
         if (response.ok) {
-            showToast('success', `${plug?.name}: Schedule cancelled`)
+            showToast('success', successMessage)
             await fetchPlugs()
         } else {
             showToast('error', `${plug?.name}: Failed to cancel schedule`)
@@ -417,10 +452,18 @@ const App: React.FC = () => {
                                         <li key={schedule.id}
                                             className="flex items-center justify-between bg-white rounded p-2 border border-[#d1e7dd]">
                                             <div className="flex-1">
-                                                <FaCalendar className="inline-block mr-2 text-teal-600"/>
+                                                {schedule.type === 'repeating' ? (
+                                                    <FaRepeat className="inline-block mr-2 text-orange-600"/>
+                                                ) : (
+                                                    <FaCalendar className="inline-block mr-2 text-teal-600"/>
+                                                )}
                                                 {schedule.type === 'automatic' ? (
                                                     <span className="inline-block px-2 py-0.5 mr-2 text-xs font-semibold text-blue-700 bg-blue-100 rounded">
                                                         Auto
+                                                    </span>
+                                                ) : schedule.type === 'repeating' ? (
+                                                    <span className="inline-block px-2 py-0.5 mr-2 text-xs font-semibold text-orange-700 bg-orange-100 rounded">
+                                                        Repeating
                                                     </span>
                                                 ) : (
                                                     <span className="inline-block px-2 py-0.5 mr-2 text-xs font-semibold text-purple-700 bg-purple-100 rounded">
@@ -430,7 +473,13 @@ const App: React.FC = () => {
                                                 <span className={schedule.desired_state ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
                                                     {schedule.desired_state ? 'ON' : 'OFF'}
                                                 </span>
-                                                <span className="ml-2">{fmtDatetime(schedule.target_datetime)}</span>
+                                                {schedule.type === 'repeating' && schedule.recurrence ? (
+                                                    <span className="ml-2 text-gray-700">
+                                                        {formatRecurrencePattern(schedule.recurrence)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="ml-2">{fmtDatetime(schedule.target_datetime)}</span>
+                                                )}
                                                 {schedule.duration_seconds && (
                                                     <span className="ml-2 text-gray-600">
                                                         ({schedule.desired_state ? 'OFF' : 'ON'} after <FaClock
@@ -442,10 +491,11 @@ const App: React.FC = () => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation()
-                                                    deleteSchedule(p.address, schedule.id)
+                                                    deleteSchedule(p.address, schedule.id, schedule.recurrence?.parent_id)
                                                 }}
                                                 disabled={pendingOperations[`delete-schedule-${schedule.id}`]}
                                                 className="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title={schedule.type === 'repeating' ? 'Cancel repeating schedule' : 'Cancel schedule'}
                                             >
                                                 {pendingOperations[`delete-schedule-${schedule.id}`] ? (
                                                     <span className="spinner-small"></span>
@@ -534,7 +584,7 @@ const App: React.FC = () => {
                 title="Schedule Plug"
             >
                 <ScheduleSelector
-                    onSelect={(targetDatetime, desiredState, durationMinutes) => scheduleModalPlug && createSchedule(scheduleModalPlug, targetDatetime, desiredState, durationMinutes)}
+                    onSelect={(targetDatetime, desiredState, durationMinutes, recurrence) => scheduleModalPlug && createSchedule(scheduleModalPlug, targetDatetime, desiredState, durationMinutes, recurrence)}
                     onCancel={() => setScheduleModalPlug(null)}
                 />
             </Modal>

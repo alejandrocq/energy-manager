@@ -11,6 +11,7 @@ logger = logging.getLogger("uvicorn.error")
 from email_templates import render_schedule_execution_email
 from notifications import send_email
 from plugs import Plug, plug_manager
+from recurrence import calculate_next_occurrence, format_recurrence_pattern, validate_recurrence
 from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
 
 
@@ -92,6 +93,102 @@ def create_scheduled_event(plug_address: str, plug_name: str, target_datetime: s
     return event
 
 
+def create_repeating_schedule(plug_address: str, plug_name: str, recurrence: dict, desired_state: bool, duration_seconds: int | None = None) -> dict | None:
+    """Create a new repeating schedule for a plug.
+
+    Args:
+        plug_address: IP address of the plug
+        plug_name: Name of the plug
+        recurrence: Recurrence configuration dict
+        desired_state: True = turn ON, False = turn OFF
+        duration_seconds: How long to stay in desired state before reverting
+
+    Returns:
+        Created event dict or None if validation fails
+    """
+    # Validate recurrence
+    is_valid, error = validate_recurrence(recurrence)
+    if not is_valid:
+        logger.error(f"Invalid recurrence configuration [error={error}]")
+        return None
+
+    # Generate parent_id for this repeating schedule series
+    parent_id = str(uuid.uuid4())
+
+    # Calculate first occurrence
+    now = datetime.now(timezone.utc)
+    first_occurrence = calculate_next_occurrence(recurrence, now)
+
+    if first_occurrence is None:
+        logger.error("Could not calculate first occurrence for repeating schedule")
+        return None
+
+    events = _load_scheduled_events()
+
+    # Add parent_id to recurrence config
+    recurrence_with_parent = {**recurrence, 'parent_id': parent_id}
+
+    event = {
+        'id': str(uuid.uuid4()),
+        'plug_address': plug_address,
+        'plug_name': plug_name,
+        'target_datetime': first_occurrence.isoformat(),
+        'desired_state': desired_state,
+        'duration_seconds': duration_seconds,
+        'type': 'repeating',
+        'recurrence': recurrence_with_parent,
+        'status': 'pending',
+        'created_at': now.isoformat()
+    }
+
+    events.append(event)
+    _save_scheduled_events(events)
+
+    pattern = format_recurrence_pattern(recurrence)
+    logger.info(f"Created repeating schedule [plug_name={plug_name}, pattern={pattern}, first_occurrence={first_occurrence}]")
+    return event
+
+
+def _generate_next_occurrence(completed_event: dict) -> dict | None:
+    """Generate the next occurrence of a repeating schedule after completion.
+
+    Args:
+        completed_event: The event that was just completed
+
+    Returns:
+        New pending event or None if no more occurrences
+    """
+    recurrence = completed_event.get('recurrence')
+    if not recurrence:
+        return None
+
+    # Calculate next occurrence after the completed event's target time
+    completed_time = datetime.fromisoformat(completed_event['target_datetime'])
+    next_occurrence = calculate_next_occurrence(recurrence, completed_time)
+
+    if next_occurrence is None:
+        logger.info(f"No more occurrences for repeating schedule [plug_name={completed_event['plug_name']}, parent_id={recurrence.get('parent_id')}]")
+        return None
+
+    now = datetime.now(timezone.utc)
+
+    new_event = {
+        'id': str(uuid.uuid4()),
+        'plug_address': completed_event['plug_address'],
+        'plug_name': completed_event['plug_name'],
+        'target_datetime': next_occurrence.isoformat(),
+        'desired_state': completed_event['desired_state'],
+        'duration_seconds': completed_event.get('duration_seconds'),
+        'type': 'repeating',
+        'recurrence': recurrence,
+        'status': 'pending',
+        'created_at': now.isoformat()
+    }
+
+    logger.info(f"Generated next occurrence [plug_name={completed_event['plug_name']}, next_time={next_occurrence}]")
+    return new_event
+
+
 def get_scheduled_events(plug_address: str | None = None):
     """Get all scheduled events, optionally filtered by plug address."""
     events = _load_scheduled_events()
@@ -111,6 +208,75 @@ def delete_scheduled_event(event_id: str):
             _save_scheduled_events(events)
             return True
     return False
+
+
+def delete_repeating_schedule(parent_id: str) -> bool:
+    """Cancel all pending events for a repeating schedule series.
+
+    Args:
+        parent_id: The parent_id that links all occurrences of the repeating schedule
+
+    Returns:
+        True if any events were cancelled, False otherwise
+    """
+    events = _load_scheduled_events()
+    now = datetime.now(timezone.utc)
+    cancelled_count = 0
+
+    for event in events:
+        if event.get('type') == 'repeating' and event['status'] == 'pending':
+            recurrence = event.get('recurrence', {})
+            if recurrence.get('parent_id') == parent_id:
+                event['status'] = 'cancelled'
+                event['cancelled_at'] = now.isoformat()
+                cancelled_count += 1
+
+    if cancelled_count > 0:
+        _save_scheduled_events(events)
+        logger.info(f"Cancelled repeating schedule series [parent_id={parent_id}, cancelled_count={cancelled_count}]")
+        return True
+
+    return False
+
+
+def get_repeating_schedules(plug_address: str | None = None) -> list[dict]:
+    """Get unique repeating schedule definitions.
+
+    Returns one entry per repeating schedule series (grouped by parent_id),
+    representing the next pending occurrence.
+
+    Args:
+        plug_address: Optional filter by plug address
+
+    Returns:
+        List of repeating schedule events (one per series)
+    """
+    events = _load_scheduled_events()
+
+    # Filter to repeating pending events
+    repeating = [
+        e for e in events
+        if e.get('type') == 'repeating' and e['status'] == 'pending'
+    ]
+
+    if plug_address:
+        repeating = [e for e in repeating if e['plug_address'] == plug_address]
+
+    # Group by parent_id and return the earliest pending for each
+    by_parent: dict[str, dict] = {}
+    for event in repeating:
+        parent_id = event.get('recurrence', {}).get('parent_id')
+        if parent_id:
+            if parent_id not in by_parent:
+                by_parent[parent_id] = event
+            else:
+                # Keep the one with earlier target_datetime
+                existing_dt = datetime.fromisoformat(by_parent[parent_id]['target_datetime'])
+                event_dt = datetime.fromisoformat(event['target_datetime'])
+                if event_dt < existing_dt:
+                    by_parent[parent_id] = event
+
+    return list(by_parent.values())
 
 
 def process_scheduled_events(manager_from_email: str, manager_to_email: str):
@@ -204,6 +370,12 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
                     event['status'] = 'completed'
                     event['executed_at'] = now.isoformat()
                     modified = True
+
+                    # Generate next occurrence for repeating schedules
+                    if event.get('type') == 'repeating':
+                        next_event = _generate_next_occurrence(event)
+                        if next_event:
+                            events.append(next_event)
 
                 except Exception as err:
                     logger.error(f"Error executing scheduled event [plug_name={plug_name}, error={err}]")

@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+from typing import Literal
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -16,7 +18,9 @@ from manager import run_manager_main
 from plugs import get_plugs, plug_manager, toggle_plug_automatic
 from schedules import (
     clear_automatic_schedules,
+    create_repeating_schedule,
     create_scheduled_event,
+    delete_repeating_schedule,
     delete_scheduled_event,
     generate_automatic_schedules,
     get_scheduled_events
@@ -246,17 +250,55 @@ async def get_prices():
     return [{'hour': h, 'value': p} for h, p in data]
 
 
+class RecurrenceConfig(BaseModel):
+    frequency: Literal['daily', 'weekly', 'monthly', 'custom']
+    interval: int = 1
+    days_of_week: list[int] | None = None  # 0=Monday, 6=Sunday
+    days_of_month: list[int] | None = None  # 1-31
+    time: str  # HH:MM format
+    end_date: str | None = None  # Optional ISO format date
+
+
 class ScheduleRequest(BaseModel):
-    target_datetime: str  # ISO format datetime string
+    target_datetime: str | None = None  # ISO format datetime string (required for one-time)
     desired_state: bool  # True = turn ON, False = turn OFF
     duration_minutes: int | None = None  # Optional duration in minutes
+    recurrence: RecurrenceConfig | None = None  # For repeating schedules
 
 
 @app.post('/api/plugs/{address}/schedule')
 async def create_schedule(address: str, request: ScheduleRequest):
     p = plug_manager.get_plug_by_address(address)
-    if p:
-        duration_seconds = request.duration_minutes * 60 if request.duration_minutes else None
+    if not p:
+        raise HTTPException(404, 'Plug not found')
+
+    duration_seconds = request.duration_minutes * 60 if request.duration_minutes else None
+
+    if request.recurrence:
+        # Create repeating schedule
+        recurrence_dict = {
+            'frequency': request.recurrence.frequency,
+            'interval': request.recurrence.interval,
+            'days_of_week': request.recurrence.days_of_week,
+            'days_of_month': request.recurrence.days_of_month,
+            'time': request.recurrence.time,
+            'end_date': request.recurrence.end_date
+        }
+        event = await run_in_threadpool(
+            create_repeating_schedule,
+            address,
+            p.name,
+            recurrence_dict,
+            request.desired_state,
+            duration_seconds
+        )
+        if event is None:
+            raise HTTPException(400, 'Invalid recurrence configuration')
+        return event
+    else:
+        # Create one-time schedule
+        if not request.target_datetime:
+            raise HTTPException(400, 'target_datetime is required for one-time schedules')
         event = await run_in_threadpool(
             create_scheduled_event,
             address,
@@ -266,7 +308,6 @@ async def create_schedule(address: str, request: ScheduleRequest):
             duration_seconds
         )
         return event
-    raise HTTPException(404, 'Plug not found')
 
 
 @app.get('/api/plugs/{address}/schedules')
@@ -281,6 +322,15 @@ async def delete_schedule(address: str, schedule_id: str):
     if deleted:
         return {'status': 'success', 'schedule_id': schedule_id}
     raise HTTPException(404, 'Schedule not found')
+
+
+@app.delete('/api/plugs/{address}/repeating-schedules/{parent_id}')
+async def delete_repeating(address: str, parent_id: str):
+    """Cancel all pending events for a repeating schedule series."""
+    deleted = await run_in_threadpool(delete_repeating_schedule, parent_id)
+    if deleted:
+        return {'status': 'success', 'parent_id': parent_id}
+    raise HTTPException(404, 'Repeating schedule not found')
 
 
 @app.post('/api/recalculate_schedules')
