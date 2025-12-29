@@ -84,11 +84,13 @@ class Plug:
         try:
             return operation(*args, **kwargs)
         except Exception as e:
-            error_msg = str(e).lower()
-            # Check if error is session-related
-            if any(keyword in error_msg for keyword in ['session', 'auth', 'login', 'handshake', 'token', 'invalid']):
-                logger.warning(f"Session error detected, will reinitialize on next operation [plug_name={self.name}, error={type(e).__name__}: {e}]")
-                self._session_initialized = False
+            # Try to re-initialize session and retry operation. If it fails again, we give up.
+            logger.warning(f"Operation failed, re-initializing session and retrying [plug_name={self.name}, error={type(e).__name__}: {e}]")
+            self._initialize_session()
+            try:
+                return operation(*args, **kwargs)
+            except Exception as e2:
+                logger.error(f"Operation failed after session re-initialization [plug_name={self.name}, error={type(e2).__name__}: {e2}]")
             raise
 
     def _parse_period_config(self, plug_config: configparser.SectionProxy):
