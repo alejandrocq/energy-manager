@@ -5,7 +5,13 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from config import SCHEDULED_FILE_PATH, TIMEZONE
+from config import (
+    RETRY_BASE_DELAY_SECONDS,
+    RETRY_MAX_DELAY_SECONDS,
+    RETRY_WINDOW_HOURS,
+    SCHEDULED_FILE_PATH,
+    TIMEZONE,
+)
 
 logger = logging.getLogger("uvicorn.error")
 from email_templates import render_schedule_execution_email
@@ -28,6 +34,15 @@ def _save_scheduled_events(events):
     """Save scheduled events to JSON file."""
     with open(SCHEDULED_FILE_PATH, 'w') as f:
         json.dump(events, f, indent=2)
+
+
+def _calculate_next_retry_time(retry_count: int, now: datetime) -> datetime:
+    """Calculate next retry time using exponential backoff."""
+    delay = min(
+        RETRY_BASE_DELAY_SECONDS * (2 ** retry_count),
+        RETRY_MAX_DELAY_SECONDS
+    )
+    return now + timedelta(seconds=delay)
 
 
 def clear_automatic_schedules(plug_address: str):
@@ -290,8 +305,23 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
             continue
 
         target_dt = datetime.fromisoformat(event['target_datetime'])
+        next_retry_at = event.get('next_retry_at')
 
-        if target_dt <= now:
+        # Check if we're past the retry window
+        retry_window_end = target_dt + timedelta(hours=RETRY_WINDOW_HOURS)
+        if now > retry_window_end:
+            plug_name = event.get('plug_name', 'Unknown')
+            event['status'] = 'failed'
+            event['error'] = f"Retry window expired ({RETRY_WINDOW_HOURS}h)"
+            event['failed_at'] = now.isoformat()
+            modified = True
+            logger.error(f"Schedule permanently failed [plug_name={plug_name}, reason=retry_window_expired, retry_count={event.get('retry_count', 0)}]")
+            continue
+
+        # Determine when to execute (original target or next retry time)
+        execute_time = datetime.fromisoformat(next_retry_at) if next_retry_at else target_dt
+
+        if execute_time <= now:
             # Time to execute
             plug_address = event['plug_address']
             plug_name = event.get('plug_name', 'Unknown')
@@ -378,17 +408,23 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
                             events.append(next_event)
 
                 except Exception as err:
-                    logger.error(f"Error executing scheduled event [plug_name={plug_name}, error={err}]")
-                    event['status'] = 'failed'
-                    event['error'] = str(err)
-                    event['failed_at'] = now.isoformat()
+                    # Schedule retry with exponential backoff
+                    retry_count = event.get('retry_count', 0) + 1
+                    event['retry_count'] = retry_count
+                    event['last_error'] = str(err)
+                    next_retry = _calculate_next_retry_time(retry_count, now)
+                    event['next_retry_at'] = next_retry.isoformat()
                     modified = True
+                    logger.warning(f"Schedule execution failed, will retry [plug_name={plug_name}, error={err}, retry_count={retry_count}, next_retry={next_retry}]")
             else:
-                logger.error(f"Plug not found for scheduled event [plug_address={plug_address}]")
-                event['status'] = 'failed'
-                event['error'] = 'Plug not found'
-                event['failed_at'] = now.isoformat()
+                # Plug not found - schedule retry (config might change)
+                retry_count = event.get('retry_count', 0) + 1
+                event['retry_count'] = retry_count
+                event['last_error'] = 'Plug not found'
+                next_retry = _calculate_next_retry_time(retry_count, now)
+                event['next_retry_at'] = next_retry.isoformat()
                 modified = True
+                logger.warning(f"Plug not found, will retry [plug_address={plug_address}, retry_count={retry_count}, next_retry={next_retry}]")
 
     if modified:
         _save_scheduled_events(events)

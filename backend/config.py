@@ -10,6 +10,11 @@ CONFIG_FILE_PATH = "config/config.properties"
 SCHEDULED_FILE_PATH = "data/schedules.json"
 PLUG_STATES_FILE_PATH = "data/plug_states.json"
 
+# Schedule retry configuration
+RETRY_BASE_DELAY_SECONDS = 30
+RETRY_MAX_DELAY_SECONDS = 1800  # 30 minutes cap
+RETRY_WINDOW_HOURS = 10
+
 # Global config instance
 config = configparser.ConfigParser()
 

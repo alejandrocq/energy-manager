@@ -361,3 +361,23 @@ This file documents significant changes, fixes, and improvements to the Energy M
 - backend/notifications.py: Simplified send_email function, removed chart attachment logic
 - backend/config.py: Removed CHART_FILE_NAME constant
 - backend/requirements.txt: Removed matplotlib, contourpy, cycler, fonttools, kiwisolver, numpy, pillow, pyparsing
+
+---
+
+## [2025-12-29] - Add retry strategy for scheduled events
+
+**Problem:**
+- Scheduled events that failed were immediately marked as permanently failed
+- No retry mechanism for transient errors (network issues, plug unavailable)
+- Single failure meant missed heating/cooling windows
+
+**Solution:**
+- Added exponential backoff retry logic: 30s → 1m → 2m → 4m → 8m → ... (capped at 30m)
+- Events retry until 10-hour window after target time expires
+- New event fields: `retry_count`, `next_retry_at`, `last_error`
+- Status remains `pending` during retries; `failed` only after window expires
+
+**Impact:**
+- Schedules: More resilient to transient failures
+- Backward compatible: existing events without retry fields work normally
+- Logging: Clear visibility into retry attempts and permanent failures
