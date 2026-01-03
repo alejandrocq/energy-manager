@@ -468,12 +468,13 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
     This function:
     1. Clears existing pending automatic schedules
     2. For each enabled plug (automatic mode):
-       - Calculates cheapest hour in each configured period
-       - Creates schedule to turn plug ON at that hour
+       - Creates schedule to turn plug ON at calculated target hour
        - Duration is set to the period's runtime
 
+    Note: calculate_target_hours() must be called on all plugs before this function.
+
     Args:
-        plugs: List of Plug objects
+        plugs: List of Plug objects (with target hours already calculated)
         prices: List of (hour, price) tuples for the target date
         target_date: The date these schedules are for
     """
@@ -492,14 +493,16 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
             logger.info(f"Skipping automatic schedule generation [plug_name={plug.name}, reason=manual_mode]")
             continue
 
-        plug.calculate_target_hours(prices)
-
         if isinstance(plug.strategy_data, ValleyDetectionStrategyData):
             # For valley detection, group contiguous hours into valleys and create one event per valley
             target_hours = plug.strategy_data.target_hours
             total_runtime = plug.strategy_data.runtime_seconds
 
             if not target_hours or total_runtime <= 0:
+                if not target_hours:
+                    logger.warning(f"Skipping automatic schedule [plug_name={plug.name}, strategy=valley_detection, reason=no_target_hours]")
+                elif total_runtime <= 0:
+                    logger.warning(f"Skipping automatic schedule [plug_name={plug.name}, strategy=valley_detection, reason=invalid_runtime, total_runtime={total_runtime}]")
                 continue
 
             # Group contiguous hours into valleys
@@ -564,6 +567,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
             # For period strategy (existing behavior)
             for period_idx, period in enumerate(plug.strategy_data.periods):
                 if period.target_hour is None:
+                    logger.warning(f"Skipping automatic schedule [plug_name={plug.name}, strategy=period, period={period_idx+1}, reason=no_target_hour]")
                     continue
 
                 target_hour = period.target_hour
@@ -571,6 +575,7 @@ def generate_automatic_schedules(plugs: list[Plug], prices: list[tuple[int, floa
                 runtime_seconds = period.runtime_seconds
 
                 if runtime_seconds <= 0:
+                    logger.warning(f"Skipping automatic schedule [plug_name={plug.name}, strategy=period, period={period_idx+1}, reason=invalid_runtime, runtime_seconds={runtime_seconds}]")
                     continue
 
                 # Create datetime for the target hour on target_date

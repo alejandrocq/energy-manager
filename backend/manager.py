@@ -62,7 +62,11 @@ def run_manager_main(stop_event=None):
             # Get shared plugs for daily email and schedule generation
             plugs = get_plugs(automatic_only=False)
 
-            # Generate automatic schedules first (so they appear in email)
+            # Calculate target hours for ALL plugs (for email display)
+            for plug in plugs:
+                plug.calculate_target_hours(hourly_prices)
+
+            # Generate automatic schedules (only for automatic mode plugs)
             generate_automatic_schedules(plugs, hourly_prices, target_date)
 
             # Build plug info for email template
