@@ -17,6 +17,8 @@ sample_plugs_period = [
         'name': 'Water Heater',
         'strategy_name': 'Period Strategy',
         'strategy_type': 'period',
+        'automatic_mode': True,
+        'current_status': True,  # ON
         'periods': [
             {
                 'period_name': 'Period 1 (0h - 6h)',
@@ -31,7 +33,21 @@ sample_plugs_period = [
                 'runtime_human': '1h'
             }
         ],
-        'valley_info': {}
+        'valley_info': {},
+        'pending_schedules': [
+            {
+                'type': 'automatic',
+                'target_datetime': '03:00',
+                'desired_state': True,
+                'duration_human': '2h'
+            },
+            {
+                'type': 'automatic',
+                'target_datetime': '22:00',
+                'desired_state': True,
+                'duration_human': '1h'
+            }
+        ]
     }
 ]
 
@@ -40,6 +56,8 @@ sample_plugs_valley = [
         'name': 'Radiator',
         'strategy_name': 'Valley Detection',
         'strategy_type': 'valley',
+        'automatic_mode': True,
+        'current_status': False,  # OFF
         'periods': [],
         'valley_info': {
             'target_hours': [2, 3, 4, 5],
@@ -47,7 +65,15 @@ sample_plugs_valley = [
             'runtime_human': '1h 30m',
             'runtime_seconds': 5400,
             'device_profile': 'water_heater'
-        }
+        },
+        'pending_schedules': [
+            {
+                'type': 'automatic',
+                'target_datetime': '02:00',
+                'desired_state': True,
+                'duration_human': '1h 30m'
+            }
+        ]
     }
 ]
 
@@ -56,6 +82,8 @@ sample_plugs_mixed = sample_plugs_period + sample_plugs_valley + [
         'name': 'Home Server',
         'strategy_name': 'Period Strategy',
         'strategy_type': 'period',
+        'automatic_mode': False,  # Manual mode
+        'current_status': True,  # ON
         'periods': [
             {
                 'period_name': 'Period 1 (0h - 23h)',
@@ -64,7 +92,32 @@ sample_plugs_mixed = sample_plugs_period + sample_plugs_valley + [
                 'runtime_human': '20h'
             }
         ],
-        'valley_info': {}
+        'valley_info': {},
+        'pending_schedules': [
+            {
+                'type': 'manual',
+                'target_datetime': '14:30',
+                'desired_state': False,
+                'duration_human': None
+            }
+        ]
+    },
+    {
+        'name': 'Coffee Machine',
+        'strategy_name': None,  # No strategy configured
+        'strategy_type': None,
+        'automatic_mode': False,  # Manual mode
+        'current_status': None,  # Status unknown
+        'periods': [],
+        'valley_info': {},
+        'pending_schedules': [
+            {
+                'type': 'repeating',
+                'target_datetime': '07:00',
+                'desired_state': True,
+                'duration_human': '15m'
+            }
+        ]
     }
 ]
 

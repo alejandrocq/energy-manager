@@ -11,7 +11,7 @@ logger = logging.getLogger("uvicorn.error")
 from email_templates import render_daily_summary_email
 from notifications import send_email
 from plugs import get_plugs, plug_manager
-from schedules import generate_automatic_schedules, process_scheduled_events
+from schedules import generate_automatic_schedules, get_scheduled_events, process_scheduled_events
 from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
 
 
@@ -61,20 +61,58 @@ def run_manager_main(stop_event=None):
             # Get shared plugs for daily email and schedule generation
             plugs = get_plugs(automatic_only=False)
 
+            # Generate automatic schedules first (so they appear in email)
+            generate_automatic_schedules(plugs, hourly_prices, target_date)
+
             # Build plug info for email template
             plugs_info = []
             for plug in plugs:
-                plug.calculate_target_hours(hourly_prices)
+                # Fetch current status
+                current_status = None
+                try:
+                    with plug.acquire_lock():
+                        current_status = plug.get_status()
+                except Exception as e:
+                    logger.warning(f"Failed to get plug status for email [plug_name={plug.name}, error={e}]")
+
+                # Get pending schedules for this plug (includes newly generated automatic ones)
+                pending_events = get_scheduled_events(plug.address)
+                pending_schedules = []
+                for event in pending_events:
+                    event_target_dt = datetime.fromisoformat(event['target_datetime']).astimezone(TIMEZONE)
+                    duration_seconds = event.get('duration_seconds')
+                    duration_human = None
+                    if duration_seconds:
+                        hours = duration_seconds // 3600
+                        minutes = (duration_seconds % 3600) // 60
+                        if hours and minutes:
+                            duration_human = f"{hours}h {minutes}m"
+                        elif hours:
+                            duration_human = f"{hours}h"
+                        elif minutes:
+                            duration_human = f"{minutes}m"
+
+                    pending_schedules.append({
+                        'type': event.get('type', 'manual'),
+                        'target_datetime': event_target_dt.strftime("%H:%M"),
+                        'desired_state': event.get('desired_state', True),
+                        'duration_human': duration_human
+                    })
 
                 plug_data = {
                     'name': plug.name,
                     'strategy_name': plug.strategy_name,
-                    'strategy_type': '',
+                    'strategy_type': None,
+                    'automatic_mode': plug.automatic_schedules,
+                    'current_status': current_status,
                     'periods': [],
-                    'valley_info': {}
+                    'valley_info': {},
+                    'pending_schedules': pending_schedules
                 }
 
-                if isinstance(plug.strategy_data, ValleyDetectionStrategyData):
+                if plug.strategy is None:
+                    plug_data['strategy_type'] = None
+                elif isinstance(plug.strategy_data, ValleyDetectionStrategyData):
                     plug_data['strategy_type'] = 'valley'
                     target_hours = plug.strategy_data.target_hours
                     if target_hours:
@@ -85,7 +123,6 @@ def run_manager_main(stop_event=None):
                             'runtime_seconds': plug.strategy_data.runtime_seconds,
                             'device_profile': plug.strategy_data.device_profile
                         }
-
                 elif isinstance(plug.strategy_data, PeriodStrategyData):
                     plug_data['strategy_type'] = 'period'
                     for idx, period in enumerate(plug.strategy_data.periods):
@@ -115,12 +152,8 @@ def run_manager_main(stop_event=None):
             )
             logger.info(f"Downloaded prices data and sent email [date={target_date.date()}]")
 
-            # Generate automatic schedules for automatic plugs
-            generate_automatic_schedules(plugs, hourly_prices, target_date)
-
         # Process scheduled events (uses shared plug manager)
-        if manager_from_email and manager_to_email:
-            process_scheduled_events(manager_from_email, manager_to_email)
+        process_scheduled_events(manager_from_email, manager_to_email)
 
         # Sleep for 30 seconds, checking stop_event every second if provided
         if stop_event is None:

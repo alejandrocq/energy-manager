@@ -44,6 +44,11 @@ def icon_arrow_right(width: int = 32, color: str = "#6366f1") -> str:
     return f'<svg width="{width}" height="{width}" viewBox="0 0 24 24" fill="{color}" style="vertical-align: middle; display: inline-block; flex-shrink: 0;"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>'
 
 
+def icon_tag(width: int = 20, color: str = "#6b7280") -> str:
+    """Tag/label icon (Font Awesome 6)."""
+    return f'<svg width="{width}" height="{width}" viewBox="0 0 448 512" fill="{color}" style="vertical-align: middle; display: inline-block; flex-shrink: 0;"><path d="M0 80V229.5c0 17 6.7 33.3 18.7 45.3l176 176c25 25 65.5 25 90.5 0L418.7 317.3c25-25 25-65.5 0-90.5l-176-176c-12-12-28.3-18.7-45.3-18.7H48C21.5 32 0 53.5 0 80zm112 32a32 32 0 1 1 0 64 32 32 0 1 1 0-64z"/></svg>'
+
+
 def render_badge(text: str, bg_color: str, text_color: str) -> str:
     """Render a status badge."""
     return f'''<span style="display: inline-flex; align-items: center; padding: 2px 8px; font-size: 11px; font-weight: 600;
@@ -82,6 +87,45 @@ def render_type_badge(event_type: str) -> str:
         return render_badge("Repeating", "#ccfbf1", "#0f766e")  # teal-100, teal-700
     else:
         return render_badge("Manual", "#e9d5ff", "#6b21a8")  # purple-100, purple-800
+
+
+def render_mode_badge(automatic: bool) -> str:
+    """Render Auto/Manual mode badge for plugs."""
+    if automatic:
+        return render_badge("Auto", "#dbeafe", "#1e40af")  # blue-100, blue-800
+    else:
+        return render_badge("Manual", "#fef3c7", "#92400e")  # amber-100, amber-800
+
+
+def render_pending_schedules(schedules: list[dict]) -> str:
+    """Render pending schedules list for a plug."""
+    if not schedules:
+        return '<div style="font-size: 12px; color: #9ca3af; font-style: italic;">No pending schedules</div>'
+
+    html = '<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 8px;">'
+    html += '<div style="font-size: 12px; font-weight: 600; color: #6b7280;">Pending Schedules:</div>'
+
+    for schedule in schedules:
+        type_badge = render_type_badge(schedule['type'])
+        state_badge = render_state_badge(schedule['desired_state'])
+        time_str = schedule['target_datetime']
+        duration = schedule.get('duration_human', '')
+
+        duration_html = f'<span style="color: #9ca3af;">({duration})</span>' if duration else ''
+
+        html += f'''
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; padding: 4px 0;">
+            {type_badge}
+            {icon_clock(14)}
+            <span>{time_str}</span>
+            {icon_arrow_right(14)}
+            {state_badge}
+            {duration_html}
+        </div>
+        '''
+
+    html += '</div>'
+    return html
 
 
 def render_header() -> str:
@@ -202,11 +246,13 @@ def render_daily_summary_email(date: str, prices: list[tuple[int, float]], plugs
     Args:
         date: Date string (e.g., "2025-01-15")
         prices: List of (hour, price) tuples
-        plugs_info: List of dicts with plug schedule information:
+        plugs_info: List of dicts with plug information:
             {
                 'name': str,
-                'strategy_name': str,
-                'strategy_type': 'period' | 'valley',
+                'strategy_name': str | None,  # None if no strategy configured
+                'strategy_type': 'period' | 'valley' | None,
+                'automatic_mode': bool,  # True = automatic, False = manual
+                'current_status': bool | None,  # True = ON, False = OFF, None = unknown
                 'periods': [  # For period strategy
                     {
                         'period_name': str,
@@ -221,7 +267,15 @@ def render_daily_summary_email(date: str, prices: list[tuple[int, float]], plugs
                     'runtime_human': str,
                     'runtime_seconds': int,
                     'device_profile': str
-                }
+                },
+                'pending_schedules': [  # All pending schedules for this plug
+                    {
+                        'type': 'automatic' | 'manual' | 'repeating',
+                        'target_datetime': str,  # Local time formatted
+                        'desired_state': bool,
+                        'duration_human': str | None
+                    }
+                ]
             }
     """
     # Collect all target hours for chart highlighting
@@ -238,73 +292,100 @@ def render_daily_summary_email(date: str, prices: list[tuple[int, float]], plugs
     # Render price chart
     chart_html = render_inline_chart(prices, all_target_hours)
 
-    # Render plug schedules
+    # Render plugs
     plugs_html = ""
     for plug_info in plugs_info:
+        # Get mode and status
+        automatic_mode = plug_info.get('automatic_mode', True)
+        current_status = plug_info.get('current_status')
+        pending_schedules = plug_info.get('pending_schedules', [])
+
+        # Status badge or "Unknown" if status couldn't be fetched
+        if current_status is not None:
+            status_html = render_state_badge(current_status)
+        else:
+            status_html = '<span style="font-size: 11px; color: #9ca3af; font-style: italic;">Unknown</span>'
+
         plug_content = f'''
         <div style="display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #111827;">
-                {icon_plug()}
-                <span>{plug_info['name']}</span>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #111827;">
+                    {icon_plug()}
+                    <span>{plug_info['name']}</span>
+                </div>
+                {render_mode_badge(automatic_mode)}
             </div>
-            <div style="font-size: 13px; color: #6b7280;">
-                Strategy: {plug_info['strategy_name']}
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #6b7280;">
+                {icon_power(16)}
+                <span>Status:</span>
+                {status_html}
             </div>
         '''
 
-        if plug_info['strategy_type'] == 'period':
-            for period in plug_info.get('periods', []):
-                if period.get('target_hour') is None:
-                    continue
+        # Strategy section (only if strategy is configured)
+        if plug_info.get('strategy_name'):
+            plug_content += f'''
+            <div style="font-size: 13px; color: #6b7280;">
+                Strategy: {plug_info['strategy_name']}
+            </div>
+            '''
+
+            if plug_info['strategy_type'] == 'period':
+                for period in plug_info.get('periods', []):
+                    if period.get('target_hour') is None:
+                        continue
+
+                    plug_content += f'''
+                    <div style="display: flex; flex-direction: column; gap: 4px; background-color: #f0fdf4;
+                                padding: 8px; border-radius: 4px; border-left: 3px solid #10b981;">
+                        <div style="font-size: 12px; color: #065f46;">
+                            <strong>{period['period_name']}</strong>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
+                            {icon_calendar(16)}
+                            <span>Scheduled: <strong>{period['target_hour']}h</strong></span>
+                            {icon_arrow_right(16)}
+                            {render_state_badge(True)}
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
+                            {icon_euro(16, "#059669")}
+                            <span>Price: <strong>{period['target_price']:.4f} €/kWh</strong></span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
+                            {icon_clock(16, "#a855f7")}
+                            <span>Duration: <strong>{period['runtime_human']}</strong></span>
+                        </div>
+                    </div>
+                    '''
+
+            elif plug_info['strategy_type'] == 'valley':
+                valley_info = plug_info.get('valley_info', {})
+                hours_str = ', '.join(f"{h}h" for h in valley_info.get('target_hours', []))
 
                 plug_content += f'''
-                <div style="display: flex; flex-direction: column; gap: 4px; background-color: #f0fdf4;
-                            padding: 8px; border-radius: 4px; border-left: 3px solid #10b981;">
-                    <div style="font-size: 12px; color: #065f46;">
-                        <strong>{period['period_name']}</strong>
+                <div style="display: flex; flex-direction: column; gap: 4px; background-color: #eff6ff;
+                            padding: 8px; border-radius: 4px; border-left: 3px solid #3b82f6;">
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #1e40af;">
+                        {icon_tag(16, "#3b82f6")}
+                        <span>Profile: <strong>{valley_info.get('device_profile', 'Unknown')}</strong></span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
-                        {icon_calendar(16)}
-                        <span>Scheduled: <strong>{period['target_hour']}h</strong></span>
-                        {icon_arrow_right(16)}
-                        {render_state_badge(True)}
+                        {icon_arrow_down(16, "#3b82f6")}
+                        <span>Valley hours: <strong>{hours_str}</strong></span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
-                        {icon_euro(16, "#059669")}
-                        <span>Price: <strong>{period['target_price']:.4f} €/kWh</strong></span>
+                        {icon_euro(16, "#3b82f6")}
+                        <span>Average price: <strong>{valley_info.get('avg_price', 0):.4f} €/kWh</strong></span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
                         {icon_clock(16, "#a855f7")}
-                        <span>Duration: <strong>{period['runtime_human']}</strong></span>
+                        <span>Total runtime: <strong>{valley_info.get('runtime_human', 'N/A')}</strong> ({valley_info.get('runtime_seconds', 0)} seconds)</span>
                     </div>
                 </div>
                 '''
 
-        elif plug_info['strategy_type'] == 'valley':
-            valley_info = plug_info.get('valley_info', {})
-            hours_str = ', '.join(f"{h}h" for h in valley_info.get('target_hours', []))
-
-            plug_content += f'''
-            <div style="display: flex; flex-direction: column; gap: 4px; background-color: #eff6ff;
-                        padding: 8px; border-radius: 4px; border-left: 3px solid #3b82f6;">
-                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #1e40af;">
-                    {icon_chart_pie(16, "#3b82f6")}
-                    <span>Profile: <strong>{valley_info.get('device_profile', 'Unknown')}</strong></span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
-                    {icon_arrow_down(16, "#3b82f6")}
-                    <span>Valley hours: <strong>{hours_str}</strong></span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
-                    {icon_euro(16, "#3b82f6")}
-                    <span>Average price: <strong>{valley_info.get('avg_price', 0):.4f} €/kWh</strong></span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151;">
-                    {icon_clock(16, "#a855f7")}
-                    <span>Total runtime: <strong>{valley_info.get('runtime_human', 'N/A')}</strong> ({valley_info.get('runtime_seconds', 0)} seconds)</span>
-                </div>
-            </div>
-            '''
+        # Pending schedules section
+        plug_content += render_pending_schedules(pending_schedules)
 
         plug_content += '</div>'
         plugs_html += render_card(plug_content)
@@ -331,7 +412,7 @@ def render_daily_summary_email(date: str, prices: list[tuple[int, float]], plugs
                 <h3 style="display: flex; align-items: center; gap: 8px; font-family: Arial, sans-serif;
                            font-size: 18px; color: #111827; margin: 24px 0 12px 0;">
                     {icon_plug()}
-                    <span>Plug Schedules</span>
+                    <span>Plugs</span>
                 </h3>
 
                 {plugs_html}

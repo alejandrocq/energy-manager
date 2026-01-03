@@ -294,8 +294,13 @@ def get_repeating_schedules(plug_address: str | None = None) -> list[dict]:
     return list(by_parent.values())
 
 
-def process_scheduled_events(manager_from_email: str, manager_to_email: str):
-    """Process pending scheduled events and execute if time has arrived."""
+def process_scheduled_events(manager_from_email: str | None = None, manager_to_email: str | None = None):
+    """Process pending scheduled events and execute if time has arrived.
+
+    Args:
+        manager_from_email: Optional sender email for notifications
+        manager_to_email: Optional recipient email for notifications
+    """
     events = _load_scheduled_events()
     now = datetime.now(timezone.utc)
     modified = False
@@ -380,22 +385,24 @@ def process_scheduled_events(manager_from_email: str, manager_to_email: str):
                             duration_str = f"{minutes}m"
                         duration_info = f"Will turn {opposite_state} in {duration_str}"
 
-                    email_html = render_schedule_execution_email(
-                        plug_name=plug_name,
-                        event_type=event_type,
-                        from_state=from_state,
-                        to_state=desired_state,
-                        timestamp=timestamp_str,
-                        duration_info=duration_info
-                    )
+                    # Send email notification if configured
+                    if manager_from_email and manager_to_email:
+                        email_html = render_schedule_execution_email(
+                            plug_name=plug_name,
+                            event_type=event_type,
+                            from_state=from_state,
+                            to_state=desired_state,
+                            timestamp=timestamp_str,
+                            duration_info=duration_info
+                        )
 
-                    send_email(
-                        f"🔌 Plug {plug_name} scheduled {state_str} executed",
-                        email_html,
-                        manager_from_email,
-                        manager_to_email,
-                        attach_chart=False
-                    )
+                        send_email(
+                            f"🔌 Plug {plug_name} scheduled {state_str} executed",
+                            email_html,
+                            manager_from_email,
+                            manager_to_email,
+                            attach_chart=False
+                        )
 
                     event['status'] = 'completed'
                     event['executed_at'] = now.isoformat()

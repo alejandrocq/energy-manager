@@ -44,17 +44,20 @@ class Plug:
         self._lock = threading.Lock()
         self._session_initialized = False
 
-        # Load scheduling strategy (default to 'period' for backward compatibility)
-        strategy_name = plug_config.get('strategy', 'period')
-        self.strategy = create_strategy(strategy_name)
-        self.strategy_name = strategy_name
-
-        # Parse strategy-specific configuration
-        if strategy_name == 'valley_detection':
-            self._parse_valley_detection_config(plug_config)
+        # Load scheduling strategy (None if not set)
+        strategy_name = plug_config.get('strategy')
+        if strategy_name:
+            self.strategy = create_strategy(strategy_name)
+            self.strategy_name = strategy_name
+            # Parse strategy-specific configuration
+            if strategy_name == 'valley_detection':
+                self._parse_valley_detection_config(plug_config)
+            else:
+                self._parse_period_config(plug_config)
         else:
-            # Default to period strategy (existing behavior)
-            self._parse_period_config(plug_config)
+            self.strategy = None
+            self.strategy_name = None
+            self.strategy_data = None
 
     def acquire_lock(self):
         """Context manager for thread-safe plug operations."""
@@ -157,7 +160,7 @@ class Plug:
 
     def calculate_target_hours(self, prices: list[tuple[int, float]]):
         """Calculate target hours using the configured strategy."""
-        if not prices:
+        if not prices or self.strategy is None:
             return
 
         # Use strategy to calculate target hours
