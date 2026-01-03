@@ -110,17 +110,22 @@ def render_pending_schedules(schedules: list[dict]) -> str:
         state_badge = render_state_badge(schedule['desired_state'])
         time_str = schedule['target_datetime']
         duration = schedule.get('duration_human', '')
+        recurrence_pattern = schedule.get('recurrence_pattern', '')
 
         duration_html = f'<span style="color: #9ca3af;">({duration})</span>' if duration else ''
+        recurrence_html = f'<div style="font-size: 11px; color: #6b7280; margin-left: 20px;">{recurrence_pattern}</div>' if recurrence_pattern else ''
 
         html += f'''
-        <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; padding: 4px 0;">
-            {type_badge}
-            {icon_clock(14)}
-            <span>{time_str}</span>
-            {icon_arrow_right(14)}
-            {state_badge}
-            {duration_html}
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; padding: 4px 0;">
+                {type_badge}
+                {icon_clock(14)}
+                <span>{time_str}</span>
+                {icon_arrow_right(14)}
+                {state_badge}
+                {duration_html}
+            </div>
+            {recurrence_html}
         </div>
         '''
 

@@ -11,6 +11,7 @@ logger = logging.getLogger("uvicorn.error")
 from email_templates import render_daily_summary_email
 from notifications import send_email
 from plugs import get_plugs, plug_manager
+from recurrence import format_recurrence_pattern
 from schedules import generate_automatic_schedules, get_scheduled_events, process_scheduled_events
 from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
 
@@ -92,11 +93,24 @@ def run_manager_main(stop_event=None):
                         elif minutes:
                             duration_human = f"{minutes}m"
 
+                    # Format datetime: include date if not today
+                    today = datetime.now(TIMEZONE).date()
+                    if event_target_dt.date() == today:
+                        datetime_str = event_target_dt.strftime("%H:%M")
+                    else:
+                        datetime_str = event_target_dt.strftime("%b %d, %H:%M")
+
+                    # Get recurrence pattern for repeating schedules
+                    recurrence_pattern = None
+                    if event.get('type') == 'repeating' and event.get('recurrence'):
+                        recurrence_pattern = format_recurrence_pattern(event['recurrence'])
+
                     pending_schedules.append({
                         'type': event.get('type', 'manual'),
-                        'target_datetime': event_target_dt.strftime("%H:%M"),
+                        'target_datetime': datetime_str,
                         'desired_state': event.get('desired_state', True),
-                        'duration_human': duration_human
+                        'duration_human': duration_human,
+                        'recurrence_pattern': recurrence_pattern
                     })
 
                 plug_data = {

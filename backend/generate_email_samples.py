@@ -39,13 +39,15 @@ sample_plugs_period = [
                 'type': 'automatic',
                 'target_datetime': '03:00',
                 'desired_state': True,
-                'duration_human': '2h'
+                'duration_human': '2h',
+                'recurrence_pattern': None
             },
             {
                 'type': 'automatic',
                 'target_datetime': '22:00',
                 'desired_state': True,
-                'duration_human': '1h'
+                'duration_human': '1h',
+                'recurrence_pattern': None
             }
         ]
     }
@@ -71,7 +73,8 @@ sample_plugs_valley = [
                 'type': 'automatic',
                 'target_datetime': '02:00',
                 'desired_state': True,
-                'duration_human': '1h 30m'
+                'duration_human': '1h 30m',
+                'recurrence_pattern': None
             }
         ]
     }
@@ -96,9 +99,10 @@ sample_plugs_mixed = sample_plugs_period + sample_plugs_valley + [
         'pending_schedules': [
             {
                 'type': 'manual',
-                'target_datetime': '14:30',
+                'target_datetime': 'Jan 05, 14:30',
                 'desired_state': False,
-                'duration_human': None
+                'duration_human': None,
+                'recurrence_pattern': None
             }
         ]
     },
@@ -113,9 +117,10 @@ sample_plugs_mixed = sample_plugs_period + sample_plugs_valley + [
         'pending_schedules': [
             {
                 'type': 'repeating',
-                'target_datetime': '07:00',
+                'target_datetime': 'Jan 04, 07:00',
                 'desired_state': True,
-                'duration_human': '15m'
+                'duration_human': '15m',
+                'recurrence_pattern': 'Daily at 07:00'
             }
         ]
     }
