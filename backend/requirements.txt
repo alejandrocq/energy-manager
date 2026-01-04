@@ -11,7 +11,7 @@ pkcs7==0.1.2
 pycryptodome==3.22.0
 pydantic==2.11.3
 pydantic_core==2.33.1
-PyP100 @ git+https://github.com/almottier/TapoP100.git@f6326a5548c8ce79aacf7b69d01fdad909e1ce05
+PyP100 @ git+https://github.com/alejandrocq/TapoP100.git@f987b59
 python-dateutil==2.9.0.post0
 requests==2.32.3
 setuptools==79.0.0
