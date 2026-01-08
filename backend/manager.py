@@ -8,6 +8,28 @@ from datetime import datetime
 from config import CONFIG_FILE_PATH, config, get_provider, TIMEZONE
 
 logger = logging.getLogger("uvicorn.error")
+
+
+def _run_health_checks():
+    """Run lightweight health checks on all plugs."""
+    logger.debug("Running health checks on all plugs")
+    plugs = get_plugs()
+    for plug in plugs:
+        try:
+            with plug.acquire_lock():
+                plug.get_status()
+                logger.debug(f"Health check passed [plug_name={plug.name}]")
+        except Exception as e:
+            error_str = str(e)
+            if "403" in error_str:
+                logger.warning(
+                    f"Health check failed with 403 [plug_name={plug.name}], "
+                    f"will recover on next operation"
+                )
+            else:
+                logger.error(
+                    f"Health check failed [plug_name={plug.name}], error={error_str}"
+                )
 from email_templates import render_daily_summary_email
 from notifications import send_email
 from plugs import get_plugs, plug_manager
@@ -17,7 +39,7 @@ from scheduling import PeriodStrategyData, ValleyDetectionStrategyData
 
 
 def run_manager_main(stop_event=None):
-    """Run the manager main loop.
+    """Run manager main loop.
 
     Args:
         stop_event: Optional threading.Event to signal graceful shutdown.
@@ -26,6 +48,8 @@ def run_manager_main(stop_event=None):
     """
     last_config_mtime = None
     target_date = None
+    health_check_counter = 0
+    HEALTH_CHECK_INTERVAL = 10  # Check every 10 iterations (5 minutes)
 
     manager_from_email = None
     manager_to_email = None
@@ -172,6 +196,12 @@ def run_manager_main(stop_event=None):
 
         # Process scheduled events (uses shared plug manager)
         process_scheduled_events(manager_from_email, manager_to_email)
+
+        # Run health check every HEALTH_CHECK_INTERVAL iterations (5 minutes)
+        health_check_counter += 1
+        if health_check_counter >= HEALTH_CHECK_INTERVAL:
+            health_check_counter = 0
+            _run_health_checks()
 
         # Sleep for 30 seconds, checking stop_event every second if provided
         if stop_event is None:

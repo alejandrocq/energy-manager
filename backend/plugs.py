@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import threading
+import time
 from datetime import datetime
 
 from PyP100 import PyP100, MeasureInterval
@@ -78,17 +79,51 @@ class Plug:
     def _execute_operation(self, operation, *args, **kwargs):
         """Execute a Tapo operation with session management. Should be called under lock."""
         self._ensure_session()
-        try:
-            return operation(*args, **kwargs)
-        except Exception as e:
-            # Re-initialize session with fresh client and retry operation
-            logger.warning(f"Operation failed, recreating client and retrying [plug_name={self.name}, error={type(e).__name__}: {e}]")
-            self._initialize_session()
+        backoff_delays = [2, 3, 5, 10]
+        attempt = 0
+
+        while attempt < len(backoff_delays) + 1:
             try:
-                return operation(*args, **kwargs)
-            except Exception as e2:
-                logger.error(f"Operation failed after client recreation [plug_name={self.name}, error={type(e2).__name__}: {e2}]")
-            raise
+                result = operation(*args, **kwargs)
+                if attempt > 0:
+                    logger.info(f"Operation succeeded on retry [plug_name={self.name}, attempt={attempt}]")
+                return result
+            except Exception as e:
+                error_str = str(e)
+                is_403_error = "403" in error_str
+
+                if is_403_error and attempt < len(backoff_delays):
+                    # 403 error - retry with backoff, same client
+                    delay = backoff_delays[attempt]
+                    attempt += 1
+                    logger.warning(
+                        f"403 error, retrying in {delay}s (attempt {attempt}/{len(backoff_delays)}) "
+                        f"[plug_name={self.name}, error={error_str}]"
+                    )
+                    time.sleep(delay)
+                    continue
+                elif is_403_error and attempt >= len(backoff_delays):
+                    # Max retries reached for 403 - recreate client
+                    logger.error(
+                        f"Max retries exceeded for 403 error, recreating client [plug_name={self.name}]"
+                    )
+                    self._initialize_session()
+                    continue
+                else:
+                    # Other errors - recreate client immediately as before
+                    logger.warning(
+                        f"Non-403 error, recreating client [plug_name={self.name}, error={error_str}]"
+                    )
+                    self._initialize_session()
+                    try:
+                        return operation(*args, **kwargs)
+                    except Exception as e2:
+                        logger.error(
+                            f"Operation failed after client recreation [plug_name={self.name}, error={type(e2).__name__}: {e2}]"
+                        )
+                        raise
+
+        raise Exception(f"Max retries exceeded for operation [plug_name={self.name}]")
 
     def _parse_period_config(self, plug_config: configparser.SectionProxy):
         """Parse period-based strategy configuration."""
